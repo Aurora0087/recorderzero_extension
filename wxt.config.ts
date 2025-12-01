@@ -23,7 +23,7 @@ export default defineConfig({
     ],
     "web_accessible_resources":[
         {
-            "resources": ["offscreen.html,content-scripts/content.js"],
+            "resources": ["content-scripts/content.js"],
             "matches": ["https://*/*","http://*/*"]
         }
     ]

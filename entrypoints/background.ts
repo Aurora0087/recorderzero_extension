@@ -1,11 +1,16 @@
-import { checkRocordingStates, getCamRecTabId, toggleCamStateInStore } from "@/lib/utils";
-import { storage } from '#imports';
+import {
+  checkRocordingStates,
+  getCamRecTabId,
+  getRecordingVideoid,
+  makeId,
+  setRecordingVideoid,
+  toggleCamStateInStore,
+} from "@/lib/utils";
+import { storage } from "#imports";
 import { RecordingType } from "@/lib/types";
-
+import { db } from "@/db";
 
 export default defineBackground(() => {
-  console.log('Hello background!', { id: browser.runtime.id });
-
   // for recording tab
   async function recordTabState(start = true) {
     try {
@@ -20,40 +25,62 @@ export default defineBackground(() => {
         await browser.offscreen.createDocument({
           url: "offscreen.html",
           reasons: [browser.offscreen.Reason.USER_MEDIA],
-          justification: "Recording from current tab."
+          justification: "Recording from current tab.",
         });
-
       }
 
       if (start) {
-
         // tabCapture API to get strem
 
-        const tabId = await getCamRecTabId();
+        let tabId = await getCamRecTabId();
 
-        console.log('tabId - ', tabId);
+        console.log("tabId - ", tabId);
 
-        const stremid = await browser.tabCapture.getMediaStreamId({
-          targetTabId: tabId
+        // Ensure video record reference exists
+        let recordingVideoId = await getRecordingVideoid();
+        if (!recordingVideoId) {
+          const id = makeId();
+          await db.videos.add({
+            id,
+            name: `video-${id}`,
+            createdAt: new Date(),
+          });
+          await setRecordingVideoid(id);
+          recordingVideoId = id;
+        }
+
+        const [currentTab] = await browser.tabs.query({
+          active: true,
+          currentWindow: true,
+        });
+        tabId = currentTab?.id || -1;
+
+        if (!tabId) {
+          console.warn("No active tab found");
+          return;
+        }
+        const streamid = await browser.tabCapture.getMediaStreamId({
+          targetTabId: tabId,
         });
 
-        console.log('stremId - ', stremid);
         // send this to offscreen doc
         browser.runtime.sendMessage({
-          type: 'start-recording',
+          type: "start-tab-recording",
           target: "offscreen",
-          data: stremid,
+          streamid,
+          videoId: recordingVideoId,
+          tabId,
         });
-      }
-      else {
+      } else {
+        // stop tab recording
+        await setRecordingVideoid(null);
         browser.runtime.sendMessage({
-          type: 'stop-recording',
+          type: "stop-tab-recording",
           target: "offscreen",
         });
       }
     } catch (error) {
-      console.error('Error while recording Tab', error);
-
+      console.error("Error while recording Tab", error);
     }
   }
 
@@ -62,7 +89,10 @@ export default defineBackground(() => {
     const desktopRecPath = browser.runtime.getURL("/desktopRecord.html");
 
     // get active current tab
-    const [currentTab] = await browser.tabs.query({ active: true, currentWindow: true });
+    const [currentTab] = await browser.tabs.query({
+      active: true,
+      currentWindow: true,
+    });
     const currentTabId = currentTab?.id;
 
     if (!currentTabId) {
@@ -73,7 +103,7 @@ export default defineBackground(() => {
     // find existing pinned recorder tab
     let pinnedTab = (
       await browser.tabs.query({
-        url: desktopRecPath
+        url: desktopRecPath,
       })
     )[0];
 
@@ -84,7 +114,7 @@ export default defineBackground(() => {
           url: desktopRecPath,
           pinned: true,
           active: true,
-          index: 0
+          index: 0,
         });
 
         // ensure the page is fully loaded before messaging
@@ -93,20 +123,21 @@ export default defineBackground(() => {
 
       await browser.tabs.sendMessage(pinnedTab.id!, {
         type: "start-recording-desktop",
-        focuseTabId: currentTabId
+        focuseTabId: currentTabId,
+        pinnedTabId: pinnedTab.id,
       });
     } else {
       await browser.tabs.sendMessage(pinnedTab.id!, {
         type: "stop-recording-desktop",
-        focuseTabId: currentTabId
+        focuseTabId: currentTabId,
+        pinnedTabId: pinnedTab.id,
       });
     }
   }
 
-
   // Wait until tab is fully loaded before messaging
   function waitForTabLoaded(tabId: number): Promise<void> {
-    return new Promise(resolve => {
+    return new Promise((resolve) => {
       const listener = (updatedTabId: number, changeInfo: any) => {
         if (updatedTabId === tabId && changeInfo.status === "complete") {
           browser.tabs.onUpdated.removeListener(listener);
@@ -117,68 +148,66 @@ export default defineBackground(() => {
     });
   }
 
-
   async function startRecording() {
-    const recordingType = await storage.getItem<RecordingType>('local:recordingType') || '';
+    const recordingType =
+      (await storage.getItem<RecordingType>("local:recordingType")) || "";
 
-    if (recordingType.includes('tab')) {
+    if (recordingType.includes("tab")) {
       recordTabState();
-    }
-    else {
+    } else {
       recordScreenState();
     }
   }
 
   async function stopRecording() {
     await toggleCamStateInStore(true, -1);
-    recordTabState(false)
-    recordScreenState(false)
+    recordTabState(false);
+    //recordScreenState(false);
   }
 
   // watch for recording tab id change
   // send message to mount or remove cam shadow ui in page
   storage.watch<number>(
-    'local:camRecTabId',
+    "local:camRecTabId",
     (newCamRecTabId, oldCamRecTabId) => {
       if (oldCamRecTabId !== -1 && oldCamRecTabId !== null) {
         browser.tabs.sendMessage(oldCamRecTabId, { type: "UNMOUNT_CAM_UI" });
       }
       if (newCamRecTabId === -1) {
-        return
-      }
-      else {
-        ; (async () => {
-          const tab = await browser.tabs.query({ active: true, currentWindow: true });
+        return;
+      } else {
+        (async () => {
+          const tab = await browser.tabs.query({
+            active: true,
+            currentWindow: true,
+          });
           if (!tab || tab[0].id === undefined) {
-            return
+            return;
           }
           const tabId = tab[0].id;
           if (newCamRecTabId === tabId) {
             browser.tabs.sendMessage(newCamRecTabId, { type: "MOUNT_CAM_UI" });
           }
-        })()
-
+        })();
       }
-    },
+    }
   );
 
   //watch for start recording and stop recording
   storage.watch<boolean>("local:isRecording", async (newValue, oldValue) => {
     if (newValue === null) {
-      return
+      return;
     }
     if (newValue) {
       startRecording();
-    }
-    else {
+    } else {
       stopRecording();
     }
-  })
+  });
 
   // watch for change url in camRecTabId
   // if url change mount cam shadow ui in page
   browser.tabs.onUpdated.addListener(async function (tabId, changeInfo, tab) {
-
     const camTabId = await getCamRecTabId();
     if (camTabId === tabId) {
       if (changeInfo.status === "complete") {
@@ -189,45 +218,42 @@ export default defineBackground(() => {
           console.warn("Failed to send MOUNT_CAM_UI:", e);
         }
       }
-    }
-    else {
+    } else {
       try {
         await browser.tabs.sendMessage(tabId, { type: "UNMOUNT_CAM_UI" });
       } catch (error) {
         console.log("Unable to send Unmount cam ui. error - ", error);
-
       }
     }
-
   });
 
   // watch for current active tab
-  browser.tabs.onActivated.addListener(async (activeInfo: globalThis.Browser.tabs.OnActivatedInfo) => {
+  browser.tabs.onActivated.addListener(
+    async (activeInfo: globalThis.Browser.tabs.OnActivatedInfo) => {
+      console.log("Tab activeed : ", activeInfo);
 
-    console.log("Tab activeed : ", activeInfo);
+      const recordState = await checkRocordingStates();
+      if (recordState[0] && recordState[1] === "record_screen") {
+        const activeTab = await browser.tabs.get(activeInfo.tabId);
 
-    const recordState = await checkRocordingStates();
-    if (recordState[0] && recordState[1] === "record_screen") {
-      const activeTab = await browser.tabs.get(activeInfo.tabId);
+        console.log("Active Tab Details : ", activeTab);
 
-      console.log("Active Tab Details : ",activeTab);
-      
-      if (!activeTab || !activeTab.id) {
-        return;
-      }
+        if (!activeTab || !activeTab.id) {
+          return;
+        }
 
-      const tabUrl = activeTab.url;
+        const tabUrl = activeTab.url;
 
-      const blockedUrls = ["brave://extensions", "chrome://extensions"];
+        const blockedUrls = ["brave://extensions", "chrome://extensions"];
 
-      if (tabUrl && activeTab.status==="complete" && !blockedUrls.some(url => tabUrl.startsWith(url))) {
-        await storage.setItem("local:camRecTabId", activeTab.id);
+        if (
+          tabUrl &&
+          activeTab.status === "complete" &&
+          !blockedUrls.some((url) => tabUrl.startsWith(url))
+        ) {
+          await storage.setItem("local:camRecTabId", activeTab.id);
+        }
       }
     }
-
-
-
-  })
-
-
+  );
 });
