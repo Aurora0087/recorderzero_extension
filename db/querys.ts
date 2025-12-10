@@ -42,6 +42,35 @@ export async function getVideos() {
     return withPreview;
 }
 
+// update video name
+
+export async function updateVideoName({vid,newName}:{vid:string,newName:string}) {
+    const video = await db.videos.where("id").equals(vid).first();
+
+    if (!video) {
+        return {status:404,message:"Video Not Found."};
+    }
+    video.name = newName;
+    await db.videos.put(video);
+    return {status:200,message:"Video updated."};
+}
+
+// delete video
+
+export async function deleteVideoAndChank({vId}:{vId:string}) {
+     const video = await db.videos.where("id").equals(vId).first();
+     if (!video) {
+        return {status:404,message:"Video Not Found."};
+    }
+
+    const chanksId = await db.chanks.where("videoId").equals(vId).primaryKeys();
+
+    await db.chanks.bulkDelete(chanksId);
+
+    await db.videos.delete(video.id);
+    
+    return {status:200,message:"Video Deleted."};
+}
 
 
 

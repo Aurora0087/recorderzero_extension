@@ -1,6 +1,6 @@
 import { useState } from 'react';
 import { Button } from '@/components/ui/button';
-import { Command } from 'lucide-react';
+import { Command, Video } from 'lucide-react';
 import { RecordingState, RecordingType } from '@/lib/types';
 import { CgScreen } from 'react-icons/cg';
 import { MdOutlineTab } from 'react-icons/md';
@@ -55,6 +55,9 @@ function App() {
           <IoIosSettings />
         </Button>
       </header>
+      <a href={videoPath} target='_blank' className="text-xs text-gray-500 hover:bg-primary hover:text-background flex gap-2 rounded-md w-full items-center justify-center px-4 py-1 bg-secondary">
+          <Video/>
+          Recorded Videos</a>
 
       {/* Record Type Buttons */}
       <div className="grid grid-cols-3 gap-2 mb-3">
@@ -89,7 +92,7 @@ function App() {
 
       {/* Footer */}
       <footer className="text-center">
-        <a href={videoPath} target='_blank' className="text-xs text-gray-500">Videos</a>
+        
       </footer>
     </div>
   );

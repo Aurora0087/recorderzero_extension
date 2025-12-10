@@ -45,12 +45,13 @@ async function stopRecording() {
 }
 
 async function startRecording(stremId: string) {
+  await getUserMediaPermissions();
   if (!stremId) {
     console.warn("No stream ID provided.");
     return;
   }
   try {
-    await getUserMediaPermissions();
+    
     if (recorder?.state === "recording") {
       throw new Error("Called startrecording while recording in progress.");
     }
@@ -67,8 +68,6 @@ async function startRecording(stremId: string) {
         mandatory: {
           chromeMediaSource: "tab",
           chromeMediaSourceId: stremId,
-          width: { exact: 1920 },
-          height: { exact: 1080 },
         },
       } as any,
     });
@@ -137,7 +136,6 @@ async function startRecording(stremId: string) {
       } catch (err) {
         console.error("Error cleaning up after stop:", err);
       } finally {
-        videoId = null;
         tabId = -1;
       }
     };

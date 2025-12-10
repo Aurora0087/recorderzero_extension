@@ -2,6 +2,7 @@ import {
   checkRocordingStates,
   getCamRecTabId,
   getRecordingVideoid,
+  getUserMediaPermissions,
   makeId,
   setRecordingVideoid,
   toggleCamStateInStore,
@@ -11,6 +12,17 @@ import { RecordingType } from "@/lib/types";
 import { db } from "@/db";
 
 export default defineBackground(() => {
+
+  // after installing extention
+  browser.runtime.onInstalled.addListener(async ({ reason }) => {
+    if (reason !== "install") return;
+
+    // Open a tab on install
+    await browser.tabs.create({
+      url: browser.runtime.getURL("/get-started.html"),
+      active: true,
+    });
+  });
   // for recording tab
   async function recordTabState(start = true) {
     try {
@@ -161,8 +173,12 @@ export default defineBackground(() => {
 
   async function stopRecording() {
     await toggleCamStateInStore(true, -1);
+    const recordingType =
+      (await storage.getItem<RecordingType>("local:recordingType")) || "";
     recordTabState(false);
-    //recordScreenState(false);
+    if (recordingType==="record_screen") {
+    recordScreenState(false);
+    }
   }
 
   // watch for recording tab id change
@@ -230,13 +246,10 @@ export default defineBackground(() => {
   // watch for current active tab
   browser.tabs.onActivated.addListener(
     async (activeInfo: globalThis.Browser.tabs.OnActivatedInfo) => {
-      console.log("Tab activeed : ", activeInfo);
 
       const recordState = await checkRocordingStates();
       if (recordState[0] && recordState[1] === "record_screen") {
         const activeTab = await browser.tabs.get(activeInfo.tabId);
-
-        console.log("Active Tab Details : ", activeTab);
 
         if (!activeTab || !activeTab.id) {
           return;

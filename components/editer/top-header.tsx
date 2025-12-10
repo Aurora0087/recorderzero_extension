@@ -13,7 +13,7 @@ export default function TopHeader({ onExport, isProcessing }: TopHeaderProps) {
         <Button size="icon">
           <Command/>
         </Button>
-        <h1 className="text-xl font-bold text-white">Recorder Zero</h1>
+        <h1 className="text-xl font-bold">Recorder Zero</h1>
       </div>
 
       <div className="flex items-center gap-3">

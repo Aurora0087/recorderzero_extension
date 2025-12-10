@@ -210,3 +210,28 @@
     @apply bg-background text-foreground;
   }
 }
+
+
+/* Style the entire scrollbar */
+*::-webkit-scrollbar {
+  width: 0.5rem; /* Set the width of the vertical scrollbar */
+  height: 0.5rem; /* Set the height of the horizontal scrollbar */
+}
+
+/* Style the scrollbar track */
+*::-webkit-scrollbar-track {
+  background: var(--primary-foreground);
+  border-radius: calc(var(--radius) - 2px);
+}
+
+/* Style the scrollbar thumb */
+*::-webkit-scrollbar-thumb {
+  background: var(--primary);
+  border-radius: calc(var(--radius) - 2px);
+}
+
+/* Style the scrollbar thumb on hover */
+*::-webkit-scrollbar-thumb:hover {
+  background: var(--primary);
+  cursor: pointer;
+}

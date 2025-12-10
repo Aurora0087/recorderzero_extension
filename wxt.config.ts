@@ -10,22 +10,32 @@ export default defineConfig({
   },
   vite: () => ({
     plugins: [tailwindcss()],
+    optimizeDeps: {
+    exclude: ['@ffmpeg/ffmpeg', '@ffmpeg/util'],
+},
   }),
   manifest: {
-    "permissions": [
+    permissions: [
       "tabCapture",
       "offscreen",
       "scripting",
       "storage",
       "desktopCapture",
       "tabs",
-      "activeTab"
+      "activeTab",
     ],
-    "web_accessible_resources":[
-        {
-            "resources": ["content-scripts/content.js"],
-            "matches": ["https://*/*","http://*/*"]
-        }
-    ]
+    "content_security_policy": {
+    "extension_pages": "script-src 'self' 'wasm-unsafe-eval'; object-src 'self';"
+  },
+
+  "web_accessible_resources": [
+    {
+      "resources": ["ffmpeg/ffmpeg-core.js","ffmpeg/ffmpeg-core.wasm","content-scripts/*","video-edited.html"],
+      "matches": [
+        "http://*/*",
+        "https://*/*"
+      ],
+    }
+  ],
   },
 });

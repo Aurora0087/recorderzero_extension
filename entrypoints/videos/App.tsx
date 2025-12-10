@@ -27,9 +27,7 @@ function App() {
     return (
         <div className=' w-screen min-h-screen h-full overflow-x-hidden relative pt-20 space-y-4 flex flex-col'>
 
-      {/* Grid background */}
-      <div className="absolute -z-10 inset-0 h-full w-full bg-[linear-gradient(to_right,#80808012_1px,transparent_1px),linear-gradient(to_bottom,#80808012_1px,transparent_1px)] bg-size-[2rem_2rem]" />
-            <Toaster richColors closeButton />
+      <Toaster richColors closeButton />
             <div className="w-full justify-between flex items-center gap-2 fixed top-0 px-4 sm:px-4 lg:px-8 h-16 bg-background/80 backdrop-blur-sm">
                 <div>RecorderZero</div>
                 <ButtonGroup>
@@ -52,7 +50,7 @@ function App() {
                     {
                         videoList.map(vl => {
                             return (
-                                <VideoCard key={vl.id} video={vl} />
+                                <VideoCard key={vl.id} video={vl} reLoadFun={load} />
                             )
                         })
                     }
