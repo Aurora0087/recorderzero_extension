@@ -82,8 +82,8 @@ export function useVideoEditor() {
     zoompans: [],
     videos: [],
     importedFiles:[],
-    padding: 20,
-    borderRadius: 10,
+    padding: 0,
+    borderRadius: 0,
     transition: "none",
     transitionDuration: 0.5,
   });
@@ -144,7 +144,6 @@ export function useVideoEditor() {
           // Video with this ID already exists, do nothing
           return prev;
         }
-
         let startTime = 0;
 
         //calculate max clipedVideoEndTime

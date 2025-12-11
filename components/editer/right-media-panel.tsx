@@ -176,7 +176,7 @@ export default function RightMediaPanel({
                 <input
                   type="range"
                   min="0"
-                  max="0"
+                  max="500"
                   value={state.padding}
                   onChange={(e) =>
                     onUpdatePadding(Number.parseInt(e.target.value))

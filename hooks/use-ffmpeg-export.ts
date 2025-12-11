@@ -75,6 +75,13 @@ export function useFFmpegExport() {
             throw new Error("Could not initialize FFmpeg");
         }
 
+        const outputH = 1080;
+        const outputW = 1920;
+
+        let inputs: string[] = [];
+        const maskImageName = "maskImageName.png";
+        let filterChain = "";
+
         setFFmpegMessage((pre) => [
           ...pre,
           "****FFmpeg Loaded successfully.****",
@@ -102,8 +109,30 @@ export function useFFmpegExport() {
         const { w: videoW, h: videoH } = await getVideoDimensions(video.url);
 
         const padding = editerState.padding || 0;
-        const totalW = videoW + padding * 2;
-        const totalH = videoH + padding * 2;
+        let extraPW = padding;
+        let extraPH = padding;
+        let totalH = videoH + padding * 2;
+        let totalW = videoW + padding * 2;
+
+        if (outputH < outputW) {
+          if (videoW < videoH) {
+            extraPW =
+              (((videoH + 2 * padding) * outputW) / outputH - videoW) * 0.5;
+            setFFmpegMessage((pre) => [
+              ...pre,
+              `****Left padding ${extraPW}.****`,
+            ]);
+            totalW = videoW + extraPW * 2;
+          } else {
+            extraPH =
+              (((videoW + 2 * padding) * outputH) / outputW - videoH) * 0.5;
+            setFFmpegMessage((pre) => [
+              ...pre,
+              `****Top padding ${extraPH}.****`,
+            ]);
+            totalH = videoH + extraPH * 2;
+          }
+        }
 
         // --- 4. Write Main Video File ---
         const fileData = await fetchFile(video.url);
@@ -120,6 +149,8 @@ export function useFFmpegExport() {
         // --- 5. Prepare FFmpeg Command Arguments ---
         let ffmpegArgs: string[] = [];
 
+        let bgBlob;
+
         // is gradiend bg using
         if (editerState.backgroundGradient.enabled) {
           setFFmpegMessage((pre) => [
@@ -128,90 +159,95 @@ export function useFFmpegExport() {
           ]);
 
           // 1. Generate Gradient Blob via Canvas
-          const bgBlob = await createGradientBlob(
+          bgBlob = await createGradientBlob(
             totalW,
             totalH,
             editerState.backgroundGradient.stops,
             editerState.backgroundGradient.angle
           );
 
-          // 2. Write Background Image to FFmpeg
-          await ffmpeg.writeFile(bgImageName, await fetchFile(bgBlob));
-
-          // 3. Command: Input Video [0] + Input BG [1] -> Overlay Video on BG
-          // [1:v][0:v]overlay=x=P:y=P means: Take stream 1 (bg), put stream 0 (video) on top at x,y
-          ffmpegArgs = [
-            "-i",
-            inputName,
-            "-i",
-            bgImageName,
-            "-filter_complex",
-            `[1:v][0:v]overlay=x=${padding}:y=${padding}`,
-          ];
-
           setFFmpegMessage((pre) => [
             ...pre,
-            `**** enerating Gradient Image Completed ****`,
+            `**** Generating Gradient Image Completed ****`,
           ]);
         } else {
           setFFmpegMessage((pre) => [
             ...pre,
-            "**** Applied Solid Background ****",
+            "**** Generating Solid Color Image ****",
           ]);
 
-          const hexColor = editerState.backgroundColor || "#000000";
-          ffmpegArgs = [
-            "-i",
-            inputName,
-            "-vf",
-            `pad=w=${totalW}:h=${totalH}:x=${padding}:y=${padding}:color=${hexColor}`,
-          ];
-
+          bgBlob = await createColorImageBlob(
+            totalW,
+            totalH,
+            editerState.backgroundColor
+          );
           setFFmpegMessage((pre) => [
             ...pre,
-            `**** Sigle Color bg completed.****`,
+            `**** Generating Solid Color Image Completed ****`,
           ]);
         }
 
-        // --- 6. Add Export-Specific Flags ---
-        // We append encoding flags to the existing args
-        if (exportType === "gif") {
-          // For GIF, we usually chain filters.
-          // If we already used -filter_complex (gradient), we need to chain the palette gen.
-          // This is complex, so for simplicity in this snippet, we might lose quality or
-          // need a complex filter chain builder.
-          // Simple approach for now (might override filter_complex if not careful):
-          if (editerState.backgroundGradient.enabled) {
-            // If we used overlay, we need to map the result into the GIF generation
-            // This is advanced. For now, let's just stick to standard encoding args
-            // assuming the output of the previous step is the input here.
-            // *Correction*: FFmpeg exec runs one command. We need to combine them.
+        // Write Background to FFmpeg
+        await ffmpeg.writeFile(bgImageName, await fetchFile(bgBlob));
 
-            // Append split and palette logic to the existing filter graph string?
-            // To keep it simple for this fix, we will just output standard GIF params
-            // Note: High quality GIF with overlay requires complicated filter chaining.
-            // Using basic GIF settings for reliability:
-            ffmpegArgs.push("-f", "gif", "-loop", "0");
-          } else {
-            // Solid color uses -vf, we can append scale/fps to it
-            const currentFilter = ffmpegArgs[2]; // "pad=..."
-            ffmpegArgs[2] = `${currentFilter},fps=10,scale=320:-1:flags=lanczos`;
-            ffmpegArgs.push("-loop", "0");
-          }
+        setFFmpegMessage((pre) => [
+            ...pre,
+            `**** Bg Add in FFmpeg ****`,
+          ]);
+
+        const maskBlob = await createRoundedMaskBlob(
+            {width:videoW,height:videoH,radius:editerState.borderRadius}
+          );
+        await ffmpeg.writeFile(maskImageName, await fetchFile(maskBlob));
+
+        setFFmpegMessage((pre) => [
+            ...pre,
+            `**** Video mask Add in FFmpeg ****`,
+          ]);
+
+        inputs = ["-i", inputName, "-i", bgImageName, "-i", maskImageName];
+
+        // A. Apply Mask to Video
+        // [0:v][2:v]alphamerge -> takes video and mask, merges them into [masked_video]
+        filterChain += `[0:v][2:v]alphamerge[masked_video];`;
+
+        // B. Overlay Masked Video onto Background
+        // [1:v][masked_video]overlay...
+        filterChain += `[1:v][masked_video]overlay=x=${extraPW}:y=${extraPH}`;
+
+        // setsar=1 ensures the pixel aspect ratio is square (important for players)
+        filterChain += `,scale=${outputW}:${outputH}:flags=lanczos,setsar=1`;
+
+        // --- SPECIAL HANDLING FOR GIF ---
+        if (exportType === "gif") {
+          // GIFs need fps reduction to keep file size reasonable
+          filterChain += `,fps=10`;
+          // Note: splitting palettegen/paletteuse is better for quality,
+          // but for a single command, we stick to basic filtering.
+        }
+
+        // --- CONSTRUCT FINAL ARGUMENTS ---
+        ffmpegArgs = [
+          ...inputs,
+          "-filter_complex",
+          filterChain, // We use filter_complex for both cases now, it's safer
+        ];
+
+        // --- ENCODING FLAGS ---
+        if (exportType === "gif") {
+          ffmpegArgs.push("-f", "gif", "-loop", "0");
         } else {
-          // MP4 / WebM
           ffmpegArgs.push(
             "-c:v",
             "libx264",
             "-preset",
-            "ultrafast", // Use ultrafast for WASM performance
-            "-crf",
-            "25", // Slightly higher CRF (lower quality) to reduce CPU load
+            "ultrafast",
             "-pix_fmt",
-            "yuv420p" // Critical for compatibility with QuickTime/Windows
+            "yuv420p"
           );
         }
 
+        // output file
         ffmpegArgs.push(outputName);
 
         // --- 7. Execute ---
@@ -335,6 +371,70 @@ const createGradientBlob = async (
   ctx.fillStyle = gradient;
   ctx.fillRect(0, 0, width, height);
 
+  return new Promise((resolve, reject) => {
+    canvas.toBlob((blob) => {
+      if (blob) resolve(blob);
+      else reject(new Error("Canvas blob failed"));
+    }, "image/png");
+  });
+};
+
+//
+const createColorImageBlob = async (
+  width: number,
+  height: number,
+  color: string
+): Promise<Blob> => {
+  const canvas = document.createElement("canvas");
+  canvas.width = width;
+  canvas.height = height;
+  const ctx = canvas.getContext("2d");
+  if (!ctx) throw new Error("Canvas context failed");
+
+  ctx.fillStyle = color || "#000000";
+  ctx.fillRect(0, 0, width, height);
+
+  return new Promise((resolve, reject) => {
+    canvas.toBlob((blob) => {
+      if (blob) resolve(blob);
+      else reject(new Error("Canvas blob failed"));
+    }, "image/png");
+  });
+};
+
+// Helper 4: Create a Image Blob using HTML Canvas
+const createRoundedMaskBlob = async ({
+  width,
+  height,
+  radius,
+}: {
+  width: number;
+  height: number;
+  radius: number;
+}): Promise<Blob> => {
+  const canvas = document.createElement("canvas");
+  canvas.width = width;
+  canvas.height = height;
+  const ctx = canvas.getContext("2d");
+
+  if (!ctx) throw new Error("Canvas context failed");
+
+  // 1. Clear everything (make it transparent)
+  ctx.clearRect(0, 0, width, height);
+
+  // 2. Draw a White Rounded Rectangle
+  ctx.fillStyle = "#FFFFFF";
+  ctx.beginPath();
+  // syntax: roundRect(x, y, w, h, radii)
+  if (ctx.roundRect) {
+    ctx.roundRect(0, 0, width, height, radius);
+  } else {
+    // Fallback for older browsers
+    ctx.roundRect(0, 0, width, height, [radius]);
+  }
+  ctx.fill();
+
+  // 3. Convert to Blob
   return new Promise((resolve, reject) => {
     canvas.toBlob((blob) => {
       if (blob) resolve(blob);

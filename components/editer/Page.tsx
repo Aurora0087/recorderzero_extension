@@ -44,6 +44,7 @@ export default function EditerPage({
     null
   );
   const [isFileExplorerOpen, setIsFileExplorerOpen] = useState(true);
+  const videoRefs = useRef<Map<string, HTMLVideoElement>>(new Map());
 
   const {
     state,
@@ -198,22 +199,25 @@ export default function EditerPage({
                 {state.importedFiles.map((imf) => {
                   if (imf.type.includes("video/")) {
                     return (
-                      <div
-                        key={imf.id}
-                        className=" bg-background overflow-hidden rounded-md aspect-video relative cursor-grab grid place-content-center border border-transparent hover:border-red-400"
-                        title={imf.name}
-                        draggable
+                      <div key={imf.id}
+                      draggable 
+                      title={imf.name}
                       >
-                        <video src={imf.url} controls={false}></video>
-                        <a
-                          href={imf.url}
-                          target="_blank"
-                          className="hover:text-primary absolute right-0 top-0 bg-background rounded"
-                          title="Open File in New tab"
+                        <div
+                          className="bg-background overflow-hidden rounded-md aspect-video relative cursor-grab grid place-content-center border border-transparent hover:border-red-400"
                         >
-                          <CgArrowTopRight className=" w-4 h-4" />
-                        </a>
-                        <ImFilm className=" absolute bottom-1 left-1 w-4 h-4 text-red-400" />
+                          <video src={imf.url} controls={false}></video>
+                          <a
+                            href={imf.url}
+                            target="_blank"
+                            className="hover:text-primary absolute right-0 top-0 bg-background rounded"
+                            title="Open File in New tab"
+                          >
+                            <CgArrowTopRight className=" w-4 h-4" />
+                          </a>
+                          <ImFilm className=" absolute bottom-1 left-1 w-4 h-4 text-red-400" />
+                        </div>
+                        <p className=" line-clamp-1">{imf.name}</p>
                       </div>
                     );
                   } else if (imf.type.includes("audio/")) {
@@ -235,8 +239,7 @@ export default function EditerPage({
                         <GiSoundWaves className=" w-8 h-8 text-green-400" />
                       </div>
                     );
-                  }
-                  else if (imf.type.includes("images/")) {
+                  } else if (imf.type.includes("images/")) {
                     return (
                       <div
                         key={imf.id}
@@ -244,7 +247,10 @@ export default function EditerPage({
                         title={imf.name}
                         draggable
                       >
-                        <img src={imf.url} className=" w-full h-full object-contain"></img>
+                        <img
+                          src={imf.url}
+                          className=" w-full h-full object-contain"
+                        ></img>
                         <a
                           href={imf.url}
                           target="_blank"
@@ -271,6 +277,7 @@ export default function EditerPage({
               {isFileExplorerOpen ? <FcFolder /> : <FcOpenedFolder />}
             </Button>
             <MainPreview
+              videoRefs={videoRefs}
               isPlaying={isPlaying}
               setIsPlaying={setIsPlaying}
               videos={state.videos}
