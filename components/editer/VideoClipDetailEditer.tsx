@@ -19,7 +19,7 @@ function VideoClipDetailEditer({
   selectedClipId,
 }: {
   state: VideoEditorState;
-  clipUpdate: ({ id, changeData }: VideoUpdateProps) => void
+  clipUpdate: ({ id, changeData }: VideoUpdateProps) => void;
   selectedClipId: string;
 }) {
   const [selectedVideoClip, setSelectedVideoClip] =
@@ -30,7 +30,7 @@ function VideoClipDetailEditer({
     clipedVideoStartTime: "0",
     color: "#000000",
     name: "noname",
-    strtTime:"0"
+    strtTime: "0",
   });
 
   useEffect(() => {
@@ -43,7 +43,7 @@ function VideoClipDetailEditer({
         clipedVideoStartTime: vc.clipedVideoStartTime.toString(),
         color: vc.timeLineColor,
         name: vc.name,
-        strtTime:vc.startTime.toString()
+        strtTime: vc.startTime.toString(),
       });
     }
   }, [selectedClipId, state]);
@@ -61,83 +61,97 @@ function VideoClipDetailEditer({
         toast.warning("Video clip not Selected.");
         return;
       }
-      clipUpdate({id:selectedVideoClip.id,changeData:{name:editableFildInput.name}});
+      clipUpdate({
+        id: selectedVideoClip.id,
+        changeData: { name: editableFildInput.name },
+      });
       toast.success("Video Clip's Name Changes.");
     }
   }
 
-  function changeClipColor(newColor:string) {
+  function changeClipColor(newColor: string) {
     if (!selectedVideoClip) {
-        toast.warning("Video clip not Selected.");
-        return;
-      }
-    clipUpdate({id:selectedVideoClip.id,changeData:{timeLineColor:newColor}});
+      toast.warning("Video clip not Selected.");
+      return;
+    }
+    clipUpdate({
+      id: selectedVideoClip.id,
+      changeData: { timeLineColor: newColor },
+    });
   }
-  console.log(selectedVideoClip);
-  
 
   //position in time line
-
   const updateRenderVideoClip = ({
-      start = null,
-      end = null,
-    }: {
-      start?: string | null;
-      end?: string | null;
-    }) => {
-      if (!start && !end) {
-        toast.error("Values not given in UpdateRenderVideoClip.");
-        return;
-      }
-  
-      // Process start time
-      if (start) {
-        const startTime = deformatTime(start);
-        if (startTime === null) {
-          toast.error("Invalid start time format. Use MM:SS.MS");
-          return;
-        }
-        if (startTime < 0) {
-          toast.error("Start time cannot be negative");
-          return;
-        }
-        clipUpdate({id:selectedVideoClip.id,changeData:{startTime}});
-        toast.success(`Start time updated to ${start}`);
-        return;
-      }
-  
-      // Process end time
-      if (end) {
-        const endTime = deformatTime(end);
-        if (endTime === null) {
-          toast.error("Invalid end time format. Use MM:SS.MS");
-          return;
-        }
-        if (endTime <= selectedVideoClip.minTime+selectedVideoClip.startTime) {
-          toast.error("End time must be after start time");
-          return;
-        }
-        if (endTime > selectedVideoClip.maxTime+selectedVideoClip.startTime) {
-          toast.error(`End time cannot exceed ${formatTime(selectedVideoClip.maxTime)}`);
-          return;
-        }
-        clipUpdate({id:selectedVideoClip.id,changeData:{clipedVideoEndTime:endTime}});
-        toast.success(`End time updated to ${end}`);
-        return;
-      }
-    };
+    start = null,
+    end = null,
+  }: {
+    start?: string | null;
+    end?: string | null;
+  }) => {
+    if (!start && !end) {
+      toast.error("Values not given in UpdateRenderVideoClip.");
+      return;
+    }
 
-  function changePositionInTimeLine(e: React.KeyboardEvent<HTMLInputElement>,
-      type: "start" | "end") {
+    // Process start time
+    if (start) {
+      const startTime = deformatTime(start);
+      if (startTime === null) {
+        toast.error("Invalid start time format. Use MM:SS.MS");
+        return;
+      }
+      if (startTime < 0) {
+        toast.error("Start time cannot be negative");
+        return;
+      }
+      clipUpdate({ id: selectedVideoClip.id, changeData: { startTime } });
+      toast.success(`Start time updated to ${start}`);
+      return;
+    }
+
+    // Process end time
+    if (end) {
+      const endTime = deformatTime(end);
+      if (endTime === null) {
+        toast.error("Invalid end time format. Use MM:SS.MS");
+        return;
+      }
+      if (endTime <= selectedVideoClip.minTime + selectedVideoClip.startTime) {
+        toast.error("End time must be after start time");
+        return;
+      }
+      if (endTime > selectedVideoClip.maxTime + selectedVideoClip.startTime) {
+        toast.error(
+          `End time cannot exceed ${formatTime(selectedVideoClip.maxTime)}`
+        );
+        return;
+      }
+      clipUpdate({
+        id: selectedVideoClip.id,
+        changeData: { clipedVideoEndTime: endTime },
+      });
+      toast.success(`End time updated to ${end}`);
+      return;
+    }
+  };
+
+  function changePositionInTimeLine(
+    e: React.KeyboardEvent<HTMLInputElement>,
+    type: "position-start" | "position-end" | "crop-start" | "crop-end"
+  ) {
     if (e.key === "Enter") {
       if (!selectedVideoClip) {
         toast.warning("Video clip not Selected.");
         return;
       }
-      if (type === "start") {
-        updateRenderVideoClip({ start: editableFildInput.clipedVideoStartTime});
-      } else {
-        updateRenderVideoClip({ end: editableFildInput.clipedVideoEndTime});
+      if (type === "position-start") {
+        updateRenderVideoClip({
+          start: editableFildInput.clipedVideoStartTime,
+        });
+      } else if (type === "position-end") {
+        updateRenderVideoClip({ end: editableFildInput.clipedVideoEndTime });
+      } else if (type === "crop-start") {
+      } else if (type === "crop-end") {
       }
     }
   }
@@ -146,7 +160,7 @@ function VideoClipDetailEditer({
     <div className="p-4 space-y-4">
       <div className=" flex items-center justify-between">
         <div className="flex gap-4 items-center">
-          <ImFilm  className=" text-red-400 w-4 h-4" />
+          <ImFilm className=" text-red-400 w-4 h-4" />
           <span className="font-bold text-base">{selectedVideoClip.name}</span>
         </div>
         <div className=" flex items-center gap-2">
@@ -170,29 +184,16 @@ function VideoClipDetailEditer({
         </div>
         <div className=" grid grid-cols-2 gap-2">
           <div className=" grid gap-2">
-            <span className=" text-white/50">From</span>
+            <span className=" text-white/50">Start From</span>
             <InputGroup>
               <InputGroupInput
                 defaultValue={formatTime(selectedVideoClip.startTime)}
-                onChange={(e)=>{setEditableFildInput((pre)=>{return{...pre,clipedVideoStartTime:e.target.value}})}}
-                onKeyDown={(e) => changePositionInTimeLine(e, "start")}
-              />
-              <InputGroupAddon align="inline-start">
-                <Clock />
-              </InputGroupAddon>
-              <InputGroupAddon align="inline-end">min</InputGroupAddon>
-            </InputGroup>
-          </div>
-          <div className=" grid gap-2">
-            <span className=" text-white/50">To</span>
-            <InputGroup>
-              <InputGroupInput
-                defaultValue={formatTime(
-                  selectedVideoClip.clipedVideoEndTime +
-                    selectedVideoClip.startTime
-                )}
-                onChange={(e)=>{setEditableFildInput((pre)=>{return{...pre,clipedVideoEndTime:e.target.value}})}}
-                onKeyDown={(e) => changePositionInTimeLine(e, "end")}
+                onChange={(e) => {
+                  setEditableFildInput((pre) => {
+                    return { ...pre, clipedVideoStartTime: e.target.value };
+                  });
+                }}
+                onKeyDown={(e) => changePositionInTimeLine(e, "position-start")}
               />
               <InputGroupAddon align="inline-start">
                 <Clock />
@@ -215,8 +216,14 @@ function VideoClipDetailEditer({
             <span className=" text-white/50">From</span>
             <InputGroup>
               <InputGroupInput
-                defaultValue={formatTime(selectedVideoClip.clipedVideoStartTime)}
-                onChange={(e)=>{setEditableFildInput((pre)=>{return{...pre,clipedVideoStartTime:e.target.value}})}}
+                defaultValue={formatTime(
+                  selectedVideoClip.clipedVideoStartTime
+                )}
+                onChange={(e) => {
+                  setEditableFildInput((pre) => {
+                    return { ...pre, clipedVideoStartTime: e.target.value };
+                  });
+                }}
               />
               <InputGroupAddon align="inline-start">
                 <Clock />
@@ -224,11 +231,21 @@ function VideoClipDetailEditer({
               <InputGroupAddon align="inline-end">min</InputGroupAddon>
             </InputGroup>
           </div>
+
           <div className=" grid gap-2">
             <span className=" text-white/50">To</span>
             <InputGroup>
               <InputGroupInput
-                defaultValue={formatTime(selectedVideoClip.clipedVideoEndTime)}
+                defaultValue={formatTime(
+                  selectedVideoClip.clipedVideoEndTime +
+                    selectedVideoClip.startTime
+                )}
+                onChange={(e) => {
+                  setEditableFildInput((pre) => {
+                    return { ...pre, clipedVideoEndTime: e.target.value };
+                  });
+                }}
+                onKeyDown={(e) => changePositionInTimeLine(e, "position-end")}
               />
               <InputGroupAddon align="inline-start">
                 <Clock />
@@ -263,11 +280,11 @@ function VideoClipDetailEditer({
                 <Pen />
               </InputGroupAddon>
               {selectedVideoClip.name !== editableFildInput.name ? (
-                <InputGroupAddon title="Enter to save new name" align="inline-end">
-                  <div
-                    
-                    className=" w-2 h-2 bg-green-400 rounded-full animate-pulse"
-                  />
+                <InputGroupAddon
+                  title="Enter to save new name"
+                  align="inline-end"
+                >
+                  <div className=" w-2 h-2 bg-green-400 rounded-full animate-pulse" />
                 </InputGroupAddon>
               ) : null}
             </InputGroup>
@@ -276,14 +293,14 @@ function VideoClipDetailEditer({
             <span className=" text-white/50">Clip Color</span>
             <InputGroup>
               <InputGroupInput
-              className=" transition-all"
+                className=" transition-all"
                 type="color"
                 defaultValue={editableFildInput.color}
-                onChange={(e)=>{
+                onChange={(e) => {
                   changeClipColor(e.target.value);
                 }}
               />
-              
+
               <InputGroupAddon align="inline-start">
                 <IoColorPalette />
               </InputGroupAddon>

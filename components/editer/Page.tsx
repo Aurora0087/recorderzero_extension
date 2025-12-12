@@ -12,7 +12,6 @@ import {
   DialogDescription,
   DialogHeader,
   DialogTitle,
-  DialogTrigger,
 } from "@/components/ui/dialog";
 import { Progress } from "../ui/progress";
 import { Check, Download, TerminalSquare, X } from "lucide-react";
@@ -43,6 +42,8 @@ export default function EditerPage({
   const [selectedVideoClipId, setSelectedVideoClipId] = useState<null | string>(
     null
   );
+  const [currentPlayingVideoId, setCurrentPlayingVideoId] =
+    useState<string>("");
   const [isFileExplorerOpen, setIsFileExplorerOpen] = useState(true);
   const videoRefs = useRef<Map<string, HTMLVideoElement>>(new Map());
 
@@ -71,6 +72,23 @@ export default function EditerPage({
     exportFileUrl,
   } = useFFmpegExport();
 
+  function pushSingleVideoClip(vid: string) {
+    const video = videoRefs.current.get(vid);
+    if (!video) {
+      return;
+    }
+    video.pause();
+  }
+
+  const togglePlay = () => {
+    if (isPlaying) {
+      videoRefs.current.get(currentPlayingVideoId)?.pause();
+    } else {
+      videoRefs.current.get(currentPlayingVideoId)?.play();
+    }
+    setIsPlaying(!isPlaying);
+  };
+
   const handleVideoUpload = (file: File) => {
     const url = URL.createObjectURL(file);
     setVideoUrl(url);
@@ -82,11 +100,89 @@ export default function EditerPage({
     }
   };
 
-  const handleTimeUpdate = () => {
-    if (videoElementRef.current) {
-      setCurrentTime(videoElementRef.current.currentTime);
+  function handleTimeUpdate({ vid }: { vid: string }) {
+    if (vid !== currentPlayingVideoId) {
+      return;
     }
-  };
+    const videoEle = videoRefs.current.get(currentPlayingVideoId);
+    const videoDetails = state.videos.find(
+      (a) => a.id === currentPlayingVideoId
+    );
+
+    if (videoEle && videoDetails) {
+      const videosCurrentTime = videoEle.currentTime;
+
+      if (videosCurrentTime >= videoDetails.clipedVideoEndTime) {
+        videoEle.pause();
+        if (
+          state.clipEnd ===
+          videoDetails.startTime + videoDetails.clipedVideoEndTime
+        ) {
+          setIsPlaying(false);
+        } else {
+          videoEle.style.opacity = "0%";
+          const nextVideoDetails = state.videos.find(
+            (v) => v.startTime === videoDetails.clipedVideoEndTime
+          );
+          if (nextVideoDetails) {
+            setCurrentPlayingVideoId(nextVideoDetails.id);
+            const nextVideoEle = videoRefs.current.get(nextVideoDetails.id);
+            if (nextVideoEle) {
+              nextVideoEle.style.opacity = "100%";
+              nextVideoEle.currentTime = nextVideoDetails.clipedVideoStartTime;
+              if (isPlaying) {
+                nextVideoEle.play();
+              } else {
+                nextVideoEle.pause();
+              }
+            }
+          } else {
+            setCurrentPlayingVideoId("");
+          }
+        }
+        setCurrentTime(
+          videoDetails.startTime + videoDetails.clipedVideoEndTime
+        );
+      } else {
+        setCurrentTime(
+          videoDetails.startTime +
+            videosCurrentTime +
+            videoDetails.clipedVideoStartTime
+        );
+      }
+      console.log("Current time : ", videosCurrentTime);
+    }
+  }
+
+  function onSeek({ time }: { time: number }) {
+    const seekingVideoClip = state.videos.find(
+      (v) =>
+        v.startTime + v.clipedVideoStartTime <= time &&
+        v.startTime + v.clipedVideoEndTime >= time
+    );
+    if (seekingVideoClip) {
+      setCurrentPlayingVideoId(seekingVideoClip.id);
+
+      const seekingVideoClipEle = videoRefs.current.get(seekingVideoClip.id);
+      if (seekingVideoClipEle) {
+        seekingVideoClipEle.style.opacity = "100%";
+        seekingVideoClipEle.currentTime =
+          time -
+          (seekingVideoClip.startTime + seekingVideoClip.clipedVideoStartTime);
+        if (isPlaying) {
+          seekingVideoClipEle.play();
+        }else{
+          seekingVideoClipEle.pause();
+        }
+      }
+    } else {
+      setCurrentTime(time);
+      setCurrentPlayingVideoId("");
+      videoRefs.current.forEach((v)=>{v.style.opacity="0%";
+        v.pause();
+      })
+    }
+  }
 
   const handleExportClick = () => {
     setShowExportDialog(true);
@@ -165,6 +261,7 @@ export default function EditerPage({
         URL.revokeObjectURL(video.src);
       };
       setVideoUrl(url);
+      setCurrentPlayingVideoId(videoId + "_main");
     }
   }, [blob]);
 
@@ -199,13 +296,8 @@ export default function EditerPage({
                 {state.importedFiles.map((imf) => {
                   if (imf.type.includes("video/")) {
                     return (
-                      <div key={imf.id}
-                      draggable 
-                      title={imf.name}
-                      >
-                        <div
-                          className="bg-background overflow-hidden rounded-md aspect-video relative cursor-grab grid place-content-center border border-transparent hover:border-red-400"
-                        >
+                      <div key={imf.id} draggable title={imf.name}>
+                        <div className="bg-background overflow-hidden rounded-md aspect-video relative cursor-grab grid place-content-center border border-transparent hover:border-red-400">
                           <video src={imf.url} controls={false}></video>
                           <a
                             href={imf.url}
@@ -271,19 +363,19 @@ export default function EditerPage({
               onClick={() => setIsFileExplorerOpen((pre) => !pre)}
               size="icon-sm"
               className={`absolute ${
-                isFileExplorerOpen ? "left-87" : "left-1"
-              } z-50 border transition-all`}
+                isFileExplorerOpen ? "left-88" : "left-2"
+              } z-50 top-2 border transition-all rounded`}
             >
               {isFileExplorerOpen ? <FcFolder /> : <FcOpenedFolder />}
             </Button>
             <MainPreview
+              togglePlay={togglePlay}
               videoRefs={videoRefs}
               isPlaying={isPlaying}
               setIsPlaying={setIsPlaying}
               videos={state.videos}
-              videoElementRef={videoElementRef}
               onLoadedMetadata={handleLoadedMetadata}
-              onTimeUpdate={handleTimeUpdate}
+              onTimeUpdateHandel={handleTimeUpdate}
               onImportClick={() => {
                 const input = document.createElement("input");
                 input.type = "file";
@@ -315,19 +407,16 @@ export default function EditerPage({
           {/* 2. Timeline Area - Fixed Height & No Shrink */}
           <div className=" h-full z-10 relative">
             <BottomTimeline
+            setSelectedVideoClipId={setSelectedVideoClipId}
               isPlaying={isPlaying}
-              setIsPlaying={setIsPlaying}
+              togglePlay={togglePlay}
               videos={state.videos}
               videoElementRef={videoElementRef}
               currentTime={currentTime}
               clipStart={state.clipStart}
               clipEnd={state.clipEnd}
               onUpdateClip={updateClip}
-              onSeek={(time) => {
-                if (videoElementRef.current) {
-                  videoElementRef.current.currentTime = time;
-                }
-              }}
+              onSeek={onSeek}
             />
           </div>
         </div>

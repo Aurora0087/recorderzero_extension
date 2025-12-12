@@ -9,11 +9,10 @@ import { Play, Pause } from "lucide-react";
 
 interface MainPreviewProps {
   videos: VideoTimeLineClip[];
-  videoElementRef: RefObject<HTMLVideoElement | null>;
   isPlaying: boolean;
   setIsPlaying: (value: SetStateAction<boolean>) => void;
   onLoadedMetadata: () => void;
-  onTimeUpdate: () => void;
+  onTimeUpdateHandel: ({ vid }: { vid: string }) => void;
   onImportClick: () => void;
   currentTime: number;
   clipStart: number;
@@ -30,15 +29,15 @@ interface MainPreviewProps {
   transitionDuration: number;
   onSeek: (time: number) => void;
   videoRefs: RefObject<Map<string, HTMLVideoElement>>;
+  togglePlay: () => void;
 }
 
 export default function MainPreview({
   videos,
-  videoElementRef,
   isPlaying,
   setIsPlaying,
   onLoadedMetadata,
-  onTimeUpdate,
+  onTimeUpdateHandel,
   onImportClick,
   currentTime,
   backgroundColor,
@@ -47,12 +46,11 @@ export default function MainPreview({
   borderRadius,
   onSeek,
   videoRefs,
+  togglePlay,
 }: MainPreviewProps) {
   const containerRef = useRef<HTMLDivElement>(null);
   const canvasRef = useRef<HTMLCanvasElement>(null);
   const canvasWrapper = useRef<HTMLDivElement>(null);
-  const animationFrameRef = useRef<number>(1);
-  const [currentVideoId, setCurrentVideoId] = useState<string>("");
   const [activePaddingX, setActivePaddingX] = useState(0);
   const [activePaddingY, setActivePaddingY] = useState(0);
   const [activeRadiusing, setActiveRadiusing] = useState(0);
@@ -61,13 +59,8 @@ export default function MainPreview({
   const CANVAS_WIDTH = 1920;
   const CANVAS_HEIGHT = 1080;
 
-  const togglePlay = () => {
-    setIsPlaying(!isPlaying);
-  };
-
   const renderFrame = useCallback(() => {
     const canvas = canvasRef.current;
-    const video = videoElementRef.current;
 
     if (!canvas) return;
     const ctx = canvas.getContext("2d");
@@ -127,11 +120,6 @@ export default function MainPreview({
       0.5;
     setActivePaddingY(extraPH * scaleFactorW);
     setActiveRadiusing(borderRadius * scaleFactorW);
-
-    // 4. Loop
-    if (video && !video.paused && !video.ended) {
-      animationFrameRef.current = requestAnimationFrame(renderFrame);
-    }
   }, [backgroundColor, backgroundGradient, padding, borderRadius]);
 
   // Main Effect: Set up listeners
@@ -184,6 +172,9 @@ export default function MainPreview({
                         } else {
                           videoRefs.current.delete(v.id);
                         }
+                      }}
+                      onTimeUpdate={()=>onTimeUpdateHandel({vid:v.id})}
+                      onEnded={()=>{console.log("VideoEnd.");
                       }}
                       src={v.url}
                       controls={false}

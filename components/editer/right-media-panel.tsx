@@ -15,7 +15,6 @@ import { Separator } from "../ui/separator";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "../ui/tabs";
 import { GradientPicker } from "./gradient-picker";
 import VideoClipDetailEditer from "./VideoClipDetailEditer";
-import { ScrollArea } from "../ui/scroll-area";
 import { VideoUpdateProps } from "@/hooks/use-video-editor";
 
 interface MediaFile {
@@ -274,8 +273,8 @@ export default function RightMediaPanel({
         </div>
         {/* clip modifier */}
         {
-            !selectedVideoId && state.videos.length>0 &&(
-                <VideoClipDetailEditer selectedClipId={state.videos[0].id} state={state} clipUpdate={clipUpdate}/>
+            selectedVideoId && state.videos.length>0 &&(
+                <VideoClipDetailEditer selectedClipId={selectedVideoId} state={state} clipUpdate={clipUpdate}/>
             )
         }
       </div>

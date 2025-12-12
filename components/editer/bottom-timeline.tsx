@@ -27,24 +27,26 @@ interface BottomTimelineProps {
   videoElementRef: RefObject<HTMLVideoElement | null>;
   videos: VideoTimeLineClip[];
   isPlaying: boolean;
-  setIsPlaying: (value: SetStateAction<boolean>) => void;
+  togglePlay: () => void;
   currentTime: number;
   clipStart: number;
   clipEnd: number;
   onUpdateClip: (start: number, end: number) => void;
-  onSeek: (time: number) => void;
+  onSeek: ({time}:{time: number}) => void;
+  setSelectedVideoClipId:(videoId:string|null)=>void;
 }
 
 export default function BottomTimeline({
   videoElementRef,
   isPlaying,
-  setIsPlaying,
+  togglePlay,
   currentTime,
   clipStart,
   clipEnd,
   onUpdateClip,
   onSeek,
   videos,
+  setSelectedVideoClipId
 }: BottomTimelineProps) {
   // State for timeline scaling (Zoom)
   const [pixelsPerSecond, setPixelsPerSecond] = useState(50);
@@ -61,14 +63,6 @@ export default function BottomTimeline({
   useEffect(() => {
     setEndInput(formatTime(clipEnd));
   }, [clipEnd]);
-
-  const togglePlay = () => {
-    if (videoElementRef.current) {
-      if (isPlaying) videoElementRef.current.pause();
-      else videoElementRef.current.play();
-      setIsPlaying(!isPlaying);
-    }
-  };
 
   // 1. Calculate Total Timeline Width
   // Find the end time of the last video to determine how long the timeline should be
@@ -90,7 +84,7 @@ export default function BottomTimeline({
     const rect = containerRef.current.getBoundingClientRect();
     const clickX = e.clientX - rect.left + containerRef.current.scrollLeft;
     const newTime = clickX / pixelsPerSecond;
-    onSeek(Math.max(0, newTime));
+    onSeek({time:Math.max(0, newTime)});
   };
 
   // 3. Generate Ruler Ticks
@@ -207,7 +201,7 @@ export default function BottomTimeline({
       const mouseX = e.clientX - rect.left + containerRef.current.scrollLeft;
       const newTime = mouseX / pixelsPerSecond;
 
-      onSeek(Math.max(0, Math.min(newTime, maxDuration)));
+      onSeek({time:Math.max(0, Math.min(newTime, maxDuration))});
     };
 
     const handleMouseUp = () => {
@@ -232,7 +226,7 @@ export default function BottomTimeline({
         behavior: "smooth",
       });
     }
-    onSeek(clipStart);
+    onSeek({time:clipStart});
   };
   const gotoEndTime = () => {
     if (containerRef) {
@@ -241,7 +235,7 @@ export default function BottomTimeline({
         behavior: "smooth",
       });
     }
-    onSeek(clipEnd);
+    onSeek({time:clipEnd});
   };
 
   // scrooling in Tracks 
@@ -458,6 +452,7 @@ export default function BottomTimeline({
                   }}
                   onClick={(e) => {
                     e.stopPropagation();
+                    setSelectedVideoClipId(clip.id)
                   }}
                   title={clip.name}
                 >
