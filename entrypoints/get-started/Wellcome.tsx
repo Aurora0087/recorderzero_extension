@@ -163,6 +163,8 @@ export default function WelcomePage() {
                   : requested.microphone
                   ? "Allow"
                   : "Request"}
+                  {permissions.microphone?null:
+                  <div className="absolute -top-1 -right-1 rounded-full animate-pulse w-2 h-2 bg-red-400"/>}
               </Button>
             </div>
           </div>
@@ -193,6 +195,8 @@ export default function WelcomePage() {
                   : requested.camera
                   ? "Allow"
                   : "Request"}
+                  {permissions.camera?null:
+                  <div className="absolute -top-1 -right-1 rounded-full animate-pulse w-2 h-2 bg-red-400"/>}
               </Button>
             </div>
           </div>

@@ -32,6 +32,20 @@ export async function checkRocordingStates(): Promise<RecordingState> {
   return [isRecording, recordingType, isCamEnable, tabId];
 }
 
+export async function checkUserMicState() {
+   const isMicOn =
+    (await storage.getItem<boolean>("local:isMicOn")) || false;
+  const selectedMicAudioId =
+    (await storage.getItem<string>("local:selectedMicAudioId")) || "";
+
+  return {"isMicOn":isMicOn,"selectedMicAudioId":selectedMicAudioId};
+}
+
+export async function setUserMicState({isMicOn,selectedMicAudioId}:{isMicOn:boolean,selectedMicAudioId:string}) {
+  await storage.setItem("local:isMicOn",isMicOn);
+  await storage.setItem("local:selectedMicAudioId",selectedMicAudioId);
+}
+
 export async function changeRecordType(type: RecordingType) {
   await storage.setItem("local:recordingType", type);
 }

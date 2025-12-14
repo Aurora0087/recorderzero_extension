@@ -11,9 +11,11 @@ browser.runtime.onMessage.addListener(async (message, sender, sendResponse) => {
       if (message.videoId && message.tabId > 0) {
         videoId = message.videoId;
         tabId = message.tabId;
-        setTimeout(() => {
-          startRecording(message.streamid);
-        }, 1000);
+        startRecording({
+          stremId: message.streamid,
+          isMicOn: message.mic.isEnabled,
+          micDeviceId: message.mic.deviceId,
+        });
       }
 
       break;
@@ -44,14 +46,21 @@ async function stopRecording() {
   }
 }
 
-async function startRecording(stremId: string) {
+async function startRecording({
+  stremId,
+  isMicOn = false,
+  micDeviceId = "",
+}: {
+  stremId: string;
+  isMicOn?: boolean;
+  micDeviceId?: string;
+}) {
   await getUserMediaPermissions();
   if (!stremId) {
     console.warn("No stream ID provided.");
     return;
   }
   try {
-    
     if (recorder?.state === "recording") {
       throw new Error("Called startrecording while recording in progress.");
     }
@@ -72,29 +81,32 @@ async function startRecording(stremId: string) {
       } as any,
     });
 
-    // geting microphone audio
-    const microPhone = await navigator.mediaDevices.getUserMedia({
-      audio: { echoCancellation: true, noiseSuppression: true },
-    });
-
+    const tracks: MediaStreamTrack[] = [media.getVideoTracks()[0]];
+    const audioCtx = new AudioContext();
     // Mix microphone + tab audio
 
-    const audioCtx = new AudioContext();
     const destination = audioCtx.createMediaStreamDestination();
 
-    // mic → mixedDest + speakers
-    const micSource = audioCtx.createMediaStreamSource(microPhone);
-    micSource.connect(destination);
+    let microPhone: MediaStream | null = null;
+    let micSource: MediaStreamAudioSourceNode | null = null;
+    if (isMicOn) {
+      // geting microphone audio
+      microPhone = await navigator.mediaDevices.getUserMedia({
+        audio: { deviceId: micDeviceId },
+      });
 
-    const combined = new MediaStream([
-      media.getVideoTracks()[0],
-      ...destination.stream.getAudioTracks(),
-    ]);
+      // mic → mixedDest
+      micSource = audioCtx.createMediaStreamSource(microPhone);
+      micSource.connect(destination);
+      tracks.push(...destination.stream.getAudioTracks());
+    }
+
+    const combined = new MediaStream(tracks);
 
     recorder = new MediaRecorder(combined, {
       mimeType: "video/mp4",
     });
-    // listen for data
+    // listening for data
     recorder.ondataavailable = async (e) => {
       if (!videoId || tabId < 1) return;
 
@@ -108,7 +120,7 @@ async function startRecording(stremId: string) {
         createdAt: new Date(),
       });
     };
-    // listen for stop recording
+    // listening for stop recording
     recorder.onstop = async () => {
       try {
         if (videoId) {
@@ -121,11 +133,15 @@ async function startRecording(stremId: string) {
 
         // Stop all tracks safely
         media.getTracks().forEach((t) => t.stop());
-        microPhone.getTracks().forEach((t) => t.stop());
+        if (microPhone) {
+          microPhone.getTracks().forEach((t) => t.stop());
+        }
         combined.getTracks().forEach((t) => t.stop());
 
         // Disconnect and close AudioContext
-        micSource.disconnect();
+        if (micSource) {
+          micSource.disconnect();
+        }
         destination.disconnect();
         audioCtx.close();
 
@@ -141,6 +157,7 @@ async function startRecording(stremId: string) {
     };
 
     // start recording
+    // 1s chunk
     recorder.start(1000);
   } catch (error) {
     videoId = null;

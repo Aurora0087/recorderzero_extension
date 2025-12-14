@@ -1,36 +1,52 @@
-import { useState } from 'react';
-import { Button } from '@/components/ui/button';
-import { Command, Video } from 'lucide-react';
-import { RecordingState, RecordingType } from '@/lib/types';
-import { CgScreen } from 'react-icons/cg';
-import { MdOutlineTab } from 'react-icons/md';
-import { FaPlay } from 'react-icons/fa';
-import { IoIosSettings } from 'react-icons/io';
-import CameraButton from '@/components/popup/CameraButton';
-import { changeRecordType, checkRocordingStates, toggleIsRecording } from '@/lib/utils';
+import { useState } from "react";
+import { Button } from "@/components/ui/button";
+import { Command, Video } from "lucide-react";
+import { RecordingState, RecordingType } from "@/lib/types";
+import { CgScreen } from "react-icons/cg";
+import { MdOutlineTab } from "react-icons/md";
+import { FaPlay } from "react-icons/fa";
+import { IoIosSettings } from "react-icons/io";
+import CameraButton from "@/components/popup/CameraButton";
+import {
+  changeRecordType,
+  checkRocordingStates,
+  toggleIsRecording,
+} from "@/lib/utils";
+import MicButton from "@/components/popup/MicButton";
+import CameraSettingsButton from "@/components/popup/CameraSettingButton";
+
+
+interface AudioDevice {
+  deviceId: string;
+  label: string;
+}
 
 function App() {
-
   const [recordingState, setRecordingState] = useState<RecordingState>([
     false,
     "",
     false,
-    -1
-  ]);// [isRecording, type, isCamOn,camtabId]
+    -1,
+  ]); // [isRecording, type, isCamOn,camtabId]
 
   async function reValuadedState() {
     const state = await checkRocordingStates();
-      setRecordingState(state)
+    setRecordingState(state);
   }
 
   function changeRecordingType(type: RecordingType) {
     changeRecordType(type);
-    setRecordingState(preState=>[preState[0],type,preState[2],preState[3]])
+    setRecordingState((preState) => [
+      preState[0],
+      type,
+      preState[2],
+      preState[3],
+    ]);
   }
 
   function toggleRecording() {
     if (recordingState[1].length < 1) {
-      return
+      return;
     }
     toggleIsRecording(recordingState[0]);
     reValuadedState();
@@ -38,8 +54,8 @@ function App() {
   }
 
   useEffect(() => {
-    reValuadedState()
-  }, [])
+    reValuadedState();
+  }, []);
 
   const videoPath = browser.runtime.getURL("/videos.html");
 
@@ -55,22 +71,33 @@ function App() {
           <IoIosSettings />
         </Button>
       </header>
-      <a href={videoPath} target='_blank' className="text-xs text-gray-500 hover:bg-primary hover:text-background flex gap-2 rounded-md w-full items-center justify-center px-4 py-1 bg-secondary">
-          <Video/>
-          Recorded Videos</a>
+      <a
+        href={videoPath}
+        target="_blank"
+        className="text-xs text-gray-500 hover:bg-primary hover:text-background flex gap-2 rounded-md w-full items-center justify-center px-4 py-1 bg-secondary"
+      >
+        <Video />
+        Recorded Videos
+      </a>
 
       {/* Record Type Buttons */}
-      <div className="grid grid-cols-3 gap-2 mb-3">
-        <Button variant={recordingState[1] === "record_screen" ? "default" : "secondary"}
+      <div className="grid grid-cols-3 gap-2">
+        <Button
+          variant={
+            recordingState[1] === "record_screen" ? "default" : "secondary"
+          }
           onClick={() => changeRecordingType("record_screen")}
-          className='text-xs transition-all'>
+          className="text-xs transition-all"
+        >
           <CgScreen />
           <span>Screen</span>
         </Button>
 
-        <Button variant={recordingState[1] === "record_tab" ? "default" : "secondary"}
+        <Button
+          variant={recordingState[1] === "record_tab" ? "default" : "secondary"}
           onClick={() => changeRecordingType("record_tab")}
-          className='text-xs transition-all'>
+          className="text-xs transition-all"
+        >
           <MdOutlineTab />
           <span>Tab</span>
         </Button>
@@ -78,22 +105,29 @@ function App() {
         <CameraButton />
       </div>
 
+      <MicButton/>
+      <CameraSettingsButton/>
+
+
       {/* Main Button */}
       <div className="flex justify-center">
-        <Button className=' rounded-full px-8 w-full' onClick={()=>toggleRecording()}>
+        <Button
+          className=" rounded-full px-8 w-full"
+          onClick={() => toggleRecording()}
+        >
           {recordingState[0] ? (
             <div className="animate-pulse bg-red-500 w-2 h-2 rounded-full" />
           ) : (
             <FaPlay />
           )}
-          <span>{recordingState[0] ? "Stop Recording" : "Start Recording"}</span>
+          <span>
+            {recordingState[0] ? "Stop Recording" : "Start Recording"}
+          </span>
         </Button>
       </div>
 
       {/* Footer */}
-      <footer className="text-center">
-        
-      </footer>
+      <footer className="text-center"></footer>
     </div>
   );
 }

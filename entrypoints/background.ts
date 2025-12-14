@@ -2,7 +2,7 @@ import {
   checkRocordingStates,
   getCamRecTabId,
   getRecordingVideoid,
-  getUserMediaPermissions,
+  checkUserMicState,
   makeId,
   setRecordingVideoid,
   toggleCamStateInStore,
@@ -71,6 +71,9 @@ export default defineBackground(() => {
           console.warn("No active tab found");
           return;
         }
+
+        // get mic setup
+        const micState = await checkUserMicState();
         const streamid = await browser.tabCapture.getMediaStreamId({
           targetTabId: tabId,
         });
@@ -82,6 +85,7 @@ export default defineBackground(() => {
           streamid,
           videoId: recordingVideoId,
           tabId,
+          mic:{isEnabled:micState.isMicOn,deviceId:micState.selectedMicAudioId}
         });
       } else {
         // stop tab recording
