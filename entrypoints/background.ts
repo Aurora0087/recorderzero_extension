@@ -23,6 +23,8 @@ export default defineBackground(() => {
       active: true,
     });
   });
+
+  
   // for recording tab
   async function recordTabState(start = true) {
     try {

@@ -106,8 +106,8 @@ function App() {
       </div>
 
       <MicButton/>
-      <CameraSettingsButton/>
-
+      {/*<CameraSettingsButton/>*/
+}
 
       {/* Main Button */}
       <div className="flex justify-center">
