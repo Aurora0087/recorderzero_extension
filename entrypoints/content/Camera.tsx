@@ -1,8 +1,9 @@
 import { Button } from "@/components/ui/button";
 import { ButtonGroup } from "@/components/ui/button-group";
-import { getUserMediaPermissions } from "@/lib/utils";
+import { getRandomColor, getUserMediaPermissions } from "@/lib/utils";
 import { ArrowRight, Pen, X } from "lucide-react";
 import { useEffect, useRef, useState } from "react";
+import { IoColorFill } from "react-icons/io5";
 import { LuCircleDashed } from "react-icons/lu";
 import { MdBlurOff, MdBlurOn } from "react-icons/md";
 import { TbSquareRounded } from "react-icons/tb";
@@ -21,6 +22,7 @@ export default function Camera() {
 
   const [isDrawOn, setIsDrawOn] = useState(false);
   const [drawType, setDrawType] = useState<"Pen" | "Arrow">("Pen");
+  const [drawingColor,setDrawingColor] = useState("#8CE4FF");
 
   // --- 1. Handle Camera Streaming ---
   useEffect(() => {
@@ -80,7 +82,7 @@ export default function Camera() {
       originalOutline = target.style.outline;
 
       // Apply Green Border
-      target.style.outline = "2px solid oklch(0.7227 0.1920 149.5793)";
+      target.style.outline = `2px solid ${drawingColor}`;
 
       console.log("Hovered Element:", target);
     };
@@ -138,7 +140,192 @@ export default function Camera() {
     };
   }, [isBlurOn, blurType]);
 
-  // --- 3. Handle Dragging ---
+  // --- 3. Handle draw on page ---
+  useEffect(()=>{
+    const canvasId = "recorderzero-canvas";
+    const wrapperId = "recorderzero-canvas-wrapper";
+    // 1. Get or Create Canvas Elements
+    let wrapper = document.getElementById(wrapperId) as HTMLDivElement;
+    let canvas = document.getElementById(canvasId) as HTMLCanvasElement;
+
+    if (!wrapper) {
+      wrapper = document.createElement("div");
+      wrapper.id = wrapperId;
+      // High z-index but below the Camera UI (which is z-[999999])
+      // Using arbitrary value for Tailwind compatibility or inline style
+      wrapper.style.cssText = `
+        position: absolute;
+        top: 0;
+        left: 0;
+        z-index: 9999; 
+        pointer-events: none;
+        overflow: hidden;
+      `;
+      document.body.appendChild(wrapper);
+
+      canvas = document.createElement("canvas");
+      canvas.id = canvasId;
+      canvas.style.cssText = `
+        width: 100%;
+        height: 100%;
+        display:"block";
+      `;
+      wrapper.appendChild(canvas);
+    }
+
+    // 2. Helper to resize both Wrapper and Canvas to full document size
+    const updateDimensions = () => {
+      if (!wrapper || !canvas) return;
+
+      // Calculate the full scrollable size of the page
+      const fullWidth = Math.max(
+        document.body.scrollWidth,
+        document.documentElement.scrollWidth,
+        document.body.offsetWidth,
+        document.documentElement.offsetWidth,
+        document.documentElement.clientWidth
+      );
+      
+      const fullHeight = Math.max(
+        document.body.scrollHeight,
+        document.documentElement.scrollHeight,
+        document.body.offsetHeight,
+        document.documentElement.offsetHeight,
+        document.documentElement.clientHeight
+      );
+
+      // FIX 2: Set pixel dimensions on the WRAPPER too, not just the canvas
+      wrapper.style.width = `${fullWidth}px`;
+      wrapper.style.height = `${fullHeight}px`;
+
+      // Resize canvas if needed
+      if (canvas.width !== fullWidth || canvas.height !== fullHeight) {
+        // Optional: Save existing drawing data before resizing
+        const ctx = canvas.getContext("2d");
+        const imgData = canvas.width > 0 ? ctx?.getImageData(0, 0, canvas.width, canvas.height) : null;
+        
+        canvas.width = fullWidth;
+        canvas.height = fullHeight;
+
+        // Restore drawing data
+        if (imgData && ctx) ctx.putImageData(imgData, 0, 0);
+        
+        // Re-apply context settings after resize (canvas resets context on resize)
+        if (ctx) {
+          ctx.lineCap = "round";
+          ctx.lineJoin = "round";
+          ctx.lineWidth = 4;
+          ctx.strokeStyle = "red";
+        }
+      }
+    };
+
+    // 3. Logic Handling
+    if (!isDrawOn) {
+      wrapper.style.pointerEvents = "none";
+      return;
+    }
+
+    wrapper.style.pointerEvents = "auto";
+    
+    // Initial sizing
+    updateDimensions();
+
+    // Resize listener (covers window resize)
+    window.addEventListener("resize", updateDimensions);
+    
+    // FIX 3: Observer for DOM changes (covers infinite scroll or dynamic content)
+    const resizeObserver = new ResizeObserver(() => updateDimensions());
+    resizeObserver.observe(document.body);
+
+     // --- Drawing Logic (Context Setup) ---
+    const ctx = canvas.getContext("2d");
+    if (ctx) {
+      ctx.lineCap = "round";
+      ctx.lineJoin = "round";
+      ctx.lineWidth = 4;
+      ctx.strokeStyle = drawingColor;
+    }
+
+    let isDrawing = false;
+    let startX = 0;
+    let startY = 0;
+    let snapshot: ImageData | null = null;
+
+    const getCoords = (e: MouseEvent) => {
+      // Use pageX/Y because wrapper is absolute positioned relative to the document
+      return { x: e.pageX, y: e.pageY };
+    };
+
+    const drawArrow = (fromX: number, fromY: number, toX: number, toY: number) => {
+      if (!ctx) return;
+      const headLength = 20; 
+      const angle = Math.atan2(toY - fromY, toX - fromX);
+
+      ctx.beginPath();
+      ctx.moveTo(fromX, fromY);
+      ctx.lineTo(toX, toY);
+      
+      ctx.lineTo(toX - headLength * Math.cos(angle - Math.PI / 6), toY - headLength * Math.sin(angle - Math.PI / 6));
+      ctx.moveTo(toX, toY);
+      ctx.lineTo(toX - headLength * Math.cos(angle + Math.PI / 6), toY - headLength * Math.sin(angle + Math.PI / 6));
+      
+      ctx.stroke();
+    };
+
+    const handleMouseDown = (e: MouseEvent) => {
+      if (!ctx) return;
+      isDrawing = true;
+      const { x, y } = getCoords(e);
+      startX = x;
+      startY = y;
+      
+      ctx.beginPath();
+
+      if (drawType === "Pen") {
+        ctx.moveTo(x, y);
+      } else if (drawType === "Arrow") {
+        snapshot = ctx.getImageData(0, 0, canvas.width, canvas.height);
+      }
+    };
+
+    const handleMouseMove = (e: MouseEvent) => {
+      if (!isDrawing || !ctx) return;
+      const { x, y } = getCoords(e);
+
+      if (drawType === "Pen") {
+        ctx.lineTo(x, y);
+        ctx.stroke();
+      } else if (drawType === "Arrow") {
+        if (snapshot) ctx.putImageData(snapshot, 0, 0);
+        drawArrow(startX, startY, x, y);
+      }
+    };
+
+    const handleMouseUp = () => {
+      isDrawing = false;
+      ctx?.closePath();
+    };
+
+    canvas.addEventListener("mousedown", handleMouseDown);
+    canvas.addEventListener("mousemove", handleMouseMove);
+    canvas.addEventListener("mouseup", handleMouseUp);
+    canvas.addEventListener("mouseleave", handleMouseUp); 
+
+    return () => {
+      window.removeEventListener("resize", updateDimensions);
+      resizeObserver.disconnect();
+      canvas.removeEventListener("mousedown", handleMouseDown);
+      canvas.removeEventListener("mousemove", handleMouseMove);
+      canvas.removeEventListener("mouseup", handleMouseUp);
+      canvas.removeEventListener("mouseleave", handleMouseUp);
+      
+      if (wrapper) wrapper.style.pointerEvents = "none";
+    };
+    
+  },[isDrawOn,drawType,drawingColor])
+
+  // --- 4. Handle Dragging ---
   useEffect(() => {
     const wrapper = wrapperRef.current;
     if (!wrapper) return;
@@ -202,6 +389,20 @@ export default function Camera() {
     }
   }
 
+  function turnOfDrawing() {
+    setIsDrawOn(false);
+  }
+
+  function changeDrawingColor(){
+    let color = getRandomColor();
+
+    while (color===drawingColor) {
+      color = getRandomColor();
+    }
+
+    setDrawingColor(color);
+  }
+
   return (
     <div
       ref={wrapperRef}
@@ -251,7 +452,7 @@ export default function Camera() {
           <Button
             title="Blur element"
             size="icon-sm"
-            variant={isBlurOn ? "secondary" : "default"}
+            variant={isBlurOn ? "default":"secondary"}
             className="rounded-full recorder-zero"
             onClick={changeGlurType}
           >
@@ -261,7 +462,6 @@ export default function Camera() {
             <Button
               title="Stop Blurring"
               size="icon-sm"
-              variant="destructive"
               className="rounded-full recorder-zero"
               onClick={() => setIsBlurOn(false)}
             >
@@ -274,7 +474,7 @@ export default function Camera() {
           <Button
             title="Draw"
             size="icon-sm"
-            variant={isDrawOn ? "secondary" : "default"}
+            variant={isDrawOn ? "default":"secondary"}
             className="rounded-full recorder-zero"
             onClick={changeDrawType}
           >
@@ -285,15 +485,26 @@ export default function Camera() {
             )}
           </Button>
           {isDrawOn && (
+            <>
+            <Button
+              title="Change drawing Color"
+              size="icon-sm"
+              variant="secondary"
+              className="recorder-zero"
+              onClick={changeDrawingColor}
+            >
+              <IoColorFill style={{color:drawingColor}} className="w-3 h-3" />
+            </Button>
             <Button
               title="Stop Drawing"
               size="icon-sm"
-              variant="destructive"
               className="rounded-full recorder-zero"
-              onClick={() => setIsDrawOn(false)}
+              onClick={turnOfDrawing}
             >
               <X className="w-3 h-3" />
             </Button>
+            </>
+            
           )}
         </ButtonGroup>
       </div>
