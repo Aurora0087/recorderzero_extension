@@ -92,6 +92,34 @@ export async function getUserMediaPermissions() {
   return true;
 }
 
+export async function setCamPositionOnPage(
+  x: number,
+  y: number
+) {
+  await storage.setItem("local:camXpsition", x);
+  await storage.setItem("local:camYpsition", y);
+}
+
+export async function getCamPositionOnPage() {
+  const x = await storage.getItem<number>("local:camXpsition")||16;
+  const y = await storage.getItem<number>("local:camYpsition")||16;
+  return {x,y}
+}
+
+export async function setIsFullRoundedCamLocaly({IsRound}:{IsRound:boolean}) {
+  await storage.setItem<boolean>("local:isFullRoundedTabCam",IsRound);
+}
+
+export async function getIsFullRoundedCam() {
+  const isFullRoundedCam = await storage.getItem<boolean>("local:isFullRoundedTabCam");
+  return isFullRoundedCam??false;
+}
+
+
+///////////////////////////////////////////////////////////////////////////////////////////////////////////
+
+
+
 export function makeId(length: number = 16) {
   var result = "";
   var characters =
