@@ -1,27 +1,33 @@
 import ReactDOM from "react-dom/client";
 import { createShadowRootUi } from "#imports";
 import Camera from "./Camera";
+import tailwindCss from "@/assets/tailwind.css?inline"; 
 
 export default defineContentScript({
-  matches: ["https://*/*","http://*/*"],
-  async main(ctx) {
+  matches: ["https://*/*", "http://*/*"],
+  cssInjectionMode: "ui", 
 
+  async main(ctx) {
     let isMounted = false;
 
     const ui = await createShadowRootUi(ctx, {
       name: "wxt-cam-view",
-      position: "overlay",
+      position: "inline",
       anchor: "body",
       append: "last",
-      onMount: (container) => {
-        // Don't mount react app directly on <body>
+      // Inject the Tailwind CSS string into the Shadow DOM
+      css: tailwindCss, 
+      
+      onMount: (container, shadow, shadowContainer) => {
+        // Create a wrapper div
         const wrapper = document.createElement("div");
-        wrapper.setAttribute("allow", "camera; microphone;");
         wrapper.id = "VidWeft-camera-wrapper";
-        container.append(wrapper);
+        wrapper.className = "antialiased recorder-zero"; 
 
         const root = ReactDOM.createRoot(wrapper);
         root.render(<Camera />);
+        container.append(wrapper);
+        
         isMounted = true;
         return { root, wrapper };
       },
@@ -37,14 +43,14 @@ export default defineContentScript({
         if (!isMounted) {
           ui.mount();
         }
-        sendResponse(true)
+        sendResponse(true);
         return true;
       }
       if (message.type === "UNMOUNT_CAM_UI") {
         if (isMounted) {
           ui.remove();
         }
-        sendResponse(true)
+        sendResponse(true);
         return true;
       }
     });

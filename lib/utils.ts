@@ -32,6 +32,20 @@ export async function checkRocordingStates(): Promise<RecordingState> {
   return [isRecording, recordingType, isCamEnable, tabId];
 }
 
+export async function checkUserMicState() {
+   const isMicOn =
+    (await storage.getItem<boolean>("local:isMicOn")) || false;
+  const selectedMicAudioId =
+    (await storage.getItem<string>("local:selectedMicAudioId")) || "";
+
+  return {"isMicOn":isMicOn,"selectedMicAudioId":selectedMicAudioId};
+}
+
+export async function setUserMicState({isMicOn,selectedMicAudioId}:{isMicOn:boolean,selectedMicAudioId:string}) {
+  await storage.setItem("local:isMicOn",isMicOn);
+  await storage.setItem("local:selectedMicAudioId",selectedMicAudioId);
+}
+
 export async function changeRecordType(type: RecordingType) {
   await storage.setItem("local:recordingType", type);
 }
@@ -77,6 +91,34 @@ export async function getUserMediaPermissions() {
   }
   return true;
 }
+
+export async function setCamPositionOnPage(
+  x: number,
+  y: number
+) {
+  await storage.setItem("local:camXpsition", x);
+  await storage.setItem("local:camYpsition", y);
+}
+
+export async function getCamPositionOnPage() {
+  const x = await storage.getItem<number>("local:camXpsition")||16;
+  const y = await storage.getItem<number>("local:camYpsition")||16;
+  return {x,y}
+}
+
+export async function setIsFullRoundedCamLocaly({IsRound}:{IsRound:boolean}) {
+  await storage.setItem<boolean>("local:isFullRoundedTabCam",IsRound);
+}
+
+export async function getIsFullRoundedCam() {
+  const isFullRoundedCam = await storage.getItem<boolean>("local:isFullRoundedTabCam");
+  return isFullRoundedCam??false;
+}
+
+
+///////////////////////////////////////////////////////////////////////////////////////////////////////////
+
+
 
 export function makeId(length: number = 16) {
   var result = "";
