@@ -80,6 +80,25 @@ export default function EditerPage({
     video.pause();
   }
 
+  const noVideoArea = ({ nextTime }: { nextTime: number }) => {
+    console.log(nextTime);
+
+    const nextVideoDetails = state.videos.find(
+      (v) =>
+        v.startTime + v.clipedVideoStartTime <= nextTime &&
+        v.startTime + v.clipedVideoEndTime >= nextTime
+    );
+    if (nextVideoDetails) {
+      onSeek({ time: nextVideoDetails.startTime });
+    } else {
+      setCurrentPlayingVideoId("");
+      setCurrentTime(nextTime + 0.1);
+      setTimeout(() => {
+        noVideoArea({ nextTime: nextTime + 0.1 });
+      }, 100);
+    }
+  };
+
   const togglePlay = () => {
     if (isPlaying) {
       videoRefs.current.get(currentPlayingVideoId)?.pause();
@@ -101,87 +120,142 @@ export default function EditerPage({
   };
 
   function handleTimeUpdate({ vid }: { vid: string }) {
-    if (vid !== currentPlayingVideoId) {
-      return;
-    }
+    // 1. Safety Checks
+    if (vid !== currentPlayingVideoId) return;
+
     const videoEle = videoRefs.current.get(currentPlayingVideoId);
     const videoDetails = state.videos.find(
       (a) => a.id === currentPlayingVideoId
     );
 
-    if (videoEle && videoDetails) {
-      const videosCurrentTime = videoEle.currentTime;
+    if (!videoEle || !videoDetails) return;
 
-      if (videosCurrentTime >= videoDetails.clipedVideoEndTime) {
-        videoEle.pause();
-        if (
-          state.clipEnd ===
-          videoDetails.startTime + videoDetails.clipedVideoEndTime
-        ) {
-          setIsPlaying(false);
-        } else {
-          videoEle.style.opacity = "0%";
-          const nextVideoDetails = state.videos.find(
-            (v) => v.startTime === videoDetails.clipedVideoEndTime
-          );
-          if (nextVideoDetails) {
-            setCurrentPlayingVideoId(nextVideoDetails.id);
-            const nextVideoEle = videoRefs.current.get(nextVideoDetails.id);
-            if (nextVideoEle) {
-              nextVideoEle.style.opacity = "100%";
-              nextVideoEle.currentTime = nextVideoDetails.clipedVideoStartTime;
-              if (isPlaying) {
-                nextVideoEle.play();
-              } else {
-                nextVideoEle.pause();
-              }
+    const videosCurrentTime = videoEle.currentTime;
+
+    // 2. Check if the video clip has reached its trim point
+    // We use a small buffer (0.05) to ensure we don't overshoot frames visually
+    if (videosCurrentTime >= videoDetails.clipedVideoEndTime - 0.05) {
+      // -- STOP CURRENT VIDEO --
+      videoEle.pause();
+      videoEle.style.opacity = "0"; // Hide it immediately
+
+      // Calculate where exactly this clip ends on the timeline
+      const clipDuration =
+        videoDetails.clipedVideoEndTime - videoDetails.clipedVideoStartTime;
+      const currentClipEndTimeOnTimeline =
+        videoDetails.startTime + clipDuration;
+
+      // -- CHECK 1: Is this the end of the entire project? --
+      // Check against state.clipEnd (Total Duration)
+      if (currentClipEndTimeOnTimeline >= state.clipEnd - 0.1) {
+        setIsPlaying(false);
+        setCurrentPlayingVideoId("");
+        setCurrentTime(currentClipEndTimeOnTimeline);
+        return;
+      }
+
+      // -- CHECK 2: Is there another video immediately after? --
+      const nextVideoDetails = state.videos.find(
+        (v) => Math.abs(v.startTime - currentClipEndTimeOnTimeline) < 0.1
+      );
+
+      if (nextVideoDetails) {
+        // -> SWITCH TO NEXT VIDEO
+        setCurrentPlayingVideoId(nextVideoDetails.id);
+
+        // Pre-setup the next video element
+        const nextVideoEle = videoRefs.current.get(nextVideoDetails.id);
+        if (nextVideoEle) {
+          nextVideoEle.style.opacity = "100%";
+          nextVideoEle.currentTime = nextVideoDetails.clipedVideoStartTime;
+
+          if (isPlaying) {
+            // Using a promise to prevent "play() request was interrupted" errors
+            const playPromise = nextVideoEle.play();
+            if (playPromise !== undefined) {
+              playPromise.catch((error) =>
+                console.error("Auto-play blocked:", error)
+              );
             }
-          } else {
-            setCurrentPlayingVideoId("");
           }
         }
-        setCurrentTime(
-          videoDetails.startTime + videoDetails.clipedVideoEndTime
-        );
       } else {
-        setCurrentTime(
-          videoDetails.startTime +
-            videosCurrentTime +
-            videoDetails.clipedVideoStartTime
-        );
+        // -> GAP DETECTED
+        // No video found next, but we aren't at the end of the project.
+        // We must trigger the "noVideoArea" loop to keep the playhead moving.
+        setCurrentPlayingVideoId("");
+        setCurrentTime(currentClipEndTimeOnTimeline);
+
+        if (isPlaying) {
+          noVideoArea({ nextTime: currentClipEndTimeOnTimeline + 0.1 });
+        }
       }
-      console.log("Current time : ", videosCurrentTime);
+    } else {
+      // -- NORMAL PLAYBACK --
+      // Map Video Time -> Timeline Time
+      // Formula: ClipStartOnTimeline + (CurrentVideoTime - TrimStartOffset)
+      const correctTimelineTime =
+        videoDetails.startTime +
+        (videosCurrentTime - videoDetails.clipedVideoStartTime);
+      setCurrentTime(correctTimelineTime);
     }
   }
-
   function onSeek({ time }: { time: number }) {
-    const seekingVideoClip = state.videos.find(
-      (v) =>
-        v.startTime + v.clipedVideoStartTime <= time &&
-        v.startTime + v.clipedVideoEndTime >= time
-    );
+    // 1. FIX: Correctly calculate if 'time' falls within a clip's timeline range
+    const seekingVideoClip = state.videos.find((v) => {
+      const clipDuration = v.clipedVideoEndTime - v.clipedVideoStartTime;
+      const clipEndOnTimeline = v.startTime + clipDuration;
+
+      return time >= v.startTime && time <= clipEndOnTimeline;
+    });
+
     if (seekingVideoClip) {
       setCurrentPlayingVideoId(seekingVideoClip.id);
+
+      // Hide/Pause all other videos to prevent "ghost" frames
+      videoRefs.current.forEach((ele, key) => {
+        if (key !== seekingVideoClip.id) {
+          ele.style.opacity = "0";
+          ele.pause();
+        }
+      });
 
       const seekingVideoClipEle = videoRefs.current.get(seekingVideoClip.id);
       if (seekingVideoClipEle) {
         seekingVideoClipEle.style.opacity = "100%";
+
+        // 2. Math: Internal Time = TrimStart + (TimelineTime - TimelineStart)
         seekingVideoClipEle.currentTime =
-          time -
-          (seekingVideoClip.startTime + seekingVideoClip.clipedVideoStartTime);
+          seekingVideoClip.clipedVideoStartTime +
+          (time - seekingVideoClip.startTime);
+
         if (isPlaying) {
-          seekingVideoClipEle.play();
-        }else{
+          seekingVideoClipEle
+            .play()
+            .catch((e) => console.error("Seek play interrupted", e));
+        } else {
           seekingVideoClipEle.pause();
         }
       }
     } else {
-      setCurrentTime(time);
+      // We are in a gap (No video)
       setCurrentPlayingVideoId("");
-      videoRefs.current.forEach((v)=>{v.style.opacity="0%";
+
+      videoRefs.current.forEach((v) => {
+        v.style.opacity = "0%";
         v.pause();
-      })
+      });
+
+      // 3. FIX: If playing, trigger the gap loop so the playhead keeps moving
+      if (isPlaying) {
+        // Clear previous timeouts if you have a ref for it
+        // clearTimeout(noVideoTimeoutRef.current);
+        noVideoArea({ nextTime: time + 0.1 });
+      }
     }
+
+    // Always update the global time state
+    setCurrentTime(time);
   }
 
   const handleExportClick = () => {
@@ -363,8 +437,8 @@ export default function EditerPage({
               onClick={() => setIsFileExplorerOpen((pre) => !pre)}
               size="icon-sm"
               className={`absolute ${
-                isFileExplorerOpen ? "left-88" : "left-2"
-              } z-50 top-2 border transition-all rounded`}
+                isFileExplorerOpen ? "left-89" : "left-3"
+              } z-50 top-3 border transition-all`}
             >
               {isFileExplorerOpen ? <FcFolder /> : <FcOpenedFolder />}
             </Button>
@@ -407,8 +481,10 @@ export default function EditerPage({
           {/* 2. Timeline Area - Fixed Height & No Shrink */}
           <div className=" h-full z-10 relative">
             <BottomTimeline
-            setSelectedVideoClipId={setSelectedVideoClipId}
+              addVideo={addVideo}
+              setSelectedVideoClipId={setSelectedVideoClipId}
               isPlaying={isPlaying}
+              clipUpdate={updateVideos}
               togglePlay={togglePlay}
               videos={state.videos}
               videoElementRef={videoElementRef}
