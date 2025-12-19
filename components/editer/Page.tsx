@@ -58,6 +58,7 @@ export default function EditerPage({
     updateTransitionDuration,
     addVideo,
     updateVideos,
+    deleteVideo,
     addimportedFiles,
     isProcessing,
   } = useVideoEditor();
@@ -493,6 +494,7 @@ export default function EditerPage({
               clipEnd={state.clipEnd}
               onUpdateClip={updateClip}
               onSeek={onSeek}
+              deleteVideo={deleteVideo}
             />
           </div>
         </div>

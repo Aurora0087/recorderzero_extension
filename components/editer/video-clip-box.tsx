@@ -22,6 +22,7 @@ function VideoClipBox({
   onSeek,
   addVideo,
   currentTime,
+  deleteClipAction
 }: {
   clip: VideoTimeLineClip;
   pixelsPerSecond: number;
@@ -38,6 +39,7 @@ function VideoClipBox({
     localyStoreVId,
   }: VideoAddProps) => void;
   currentTime: number;
+  deleteClipAction: (clipId: string) => void
 }) {
   const clipBox = useRef(null);
   const duration = clip.clipedVideoEndTime - clip.clipedVideoStartTime;
@@ -236,7 +238,7 @@ function VideoClipBox({
           </Button>
         </ContextMenuItem>
         <ContextMenuItem asChild variant="destructive">
-          <Button variant="ghost" className="w-full justify-start">
+          <Button variant="ghost" className="w-full justify-start" onClick={()=>deleteClipAction(clip.id)}>
             <RiDeleteBinLine className="w-4 h-4 mr-2" />
             Remove clip from time line
           </Button>

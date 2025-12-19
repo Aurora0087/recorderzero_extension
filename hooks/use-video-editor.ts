@@ -186,6 +186,13 @@ export function useVideoEditor() {
     });
   }, []);
 
+    const deleteVideo = useCallback(({ id }: {id:string}) => {
+    setState((prev) => {
+      const updatedVideos = prev.videos.filter((video) => video.id !== id);
+      return { ...prev, videos: updatedVideos };
+    });
+  }, []);
+
   const addimportedFiles = useCallback(({id,name,type,url}:VideoEditorFileProps)=>{
     setState((prev)=>{
       if (prev.importedFiles.some((imf) => (imf.id === id||imf.name===name))) {
@@ -196,39 +203,6 @@ export function useVideoEditor() {
     })
   },[])
 
-  const exportVideo = useCallback(async () => {
-    setIsProcessing(true);
-    try {
-      const timestamp = new Date()
-        .toISOString()
-        .replace(/[:.]/g, "-")
-        .slice(0, -5);
-      const filename = `edited-video-${timestamp}.mp4`;
-
-      // Create a dummy blob for demonstration
-      // In production, this would use FFmpeg WASM to process the actual video
-      const dummyData = new Array(1024 * 1024).fill(0);
-      const blob = new Blob([new Uint8Array(dummyData)], { type: "video/mp4" });
-
-      // Trigger download
-      const url = URL.createObjectURL(blob);
-      const link = document.createElement("a");
-      link.href = url;
-      link.download = filename;
-      document.body.appendChild(link);
-      link.click();
-      document.body.removeChild(link);
-      URL.revokeObjectURL(url);
-
-      console.log("Exported with settings:", state);
-    } catch (error) {
-      console.error("Export failed:", error);
-      alert("Export failed. Please try again.");
-    } finally {
-      setIsProcessing(false);
-    }
-  }, [state]);
-
   return {
     state,
     updateClip,
@@ -238,9 +212,9 @@ export function useVideoEditor() {
     updateBorderRadius,
     updateTransition,
     updateTransitionDuration,
-    exportVideo,
     updateVideos,
     addVideo,
+    deleteVideo,
     addimportedFiles,
     isProcessing,
   };

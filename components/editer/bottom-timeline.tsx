@@ -38,6 +38,7 @@ interface BottomTimelineProps {
   setSelectedVideoClipId: (videoId: string | null) => void;
   clipUpdate: ({ id, changeData }: VideoUpdateProps) => void;
   addVideo: ({ url, id, maxTime, minTime, name, type, localyStoreVId }: VideoAddProps) => void
+  deleteVideo:({id}:{id:string})=>void
 }
 
 // --- Helper Component: D3 Ruler ---
@@ -84,7 +85,8 @@ export default function BottomTimeline({
   videos,
   setSelectedVideoClipId,
   clipUpdate,
-  addVideo
+  addVideo,
+  deleteVideo
 }: BottomTimelineProps) {
   // State for timeline scaling (Zoom)
   const [pixelsPerSecond, setPixelsPerSecond] = useState(50);
@@ -265,6 +267,20 @@ export default function BottomTimeline({
     {
     }
   };
+
+  const deleteClipAction = (clipId:string)=>{
+    const deletingClip = videos.find((v)=>v.id===clipId);
+    if (!deletingClip) {
+      return
+    }
+    const deletingClipDuration = deletingClip.clipedVideoEndTime-deletingClip.clipedVideoStartTime;
+    deleteVideo({id:deletingClip.id});
+    videos.map((v)=>{
+      if (v.startTime>=deletingClip.startTime) {
+        clipUpdate({id:v.id,changeData:{startTime:v.startTime-deletingClipDuration}});
+      }
+    })
+  }
 
   return (
     <div className="bg-card/20 rounded-md overflow-hidden border flex flex-col h-full min-h-32 select-none">
@@ -467,6 +483,7 @@ export default function BottomTimeline({
                     setSelectedVideoClipId={setSelectedVideoClipId}
                     onSeek={onSeek}
                     addVideo={addVideo}
+                    deleteClipAction={deleteClipAction}
                   />
                 ))}
               </div>
