@@ -6,9 +6,7 @@ import {
 } from "@/components/ui/context-menu";
 import { Button } from "../ui/button";
 import {
-  RiCropLine,
   RiDeleteBinLine,
-  RiScissors2Line,
   RiScissorsCutLine,
 } from "react-icons/ri";
 import { makeId } from "@/lib/utils";
@@ -172,7 +170,7 @@ function VideoClipBox({
     addVideo({
       url: clip.url,
       id: randomId,
-      name: `copy-${randomId.substring(0, 4)}-${clip.name}`,
+      name: clip.name,
       localyStoreVId: clip.localyStoreVId,
       type: clip.type,
       maxTime: clip.maxTime,

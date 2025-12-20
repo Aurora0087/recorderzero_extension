@@ -15,14 +15,12 @@ import {
 } from "@/components/ui/dialog";
 import { Progress } from "../ui/progress";
 import { Check, Download, TerminalSquare, X } from "lucide-react";
-import { FcOpenedFolder, FcFolder } from "react-icons/fc";
+import { FcFolder } from "react-icons/fc";
 import { ScrollArea } from "../ui/scroll-area";
 import { Separator } from "../ui/separator";
 import { Button } from "../ui/button";
-import { ImFilm } from "react-icons/im";
-import { GiSoundWaves } from "react-icons/gi";
-import { CgArrowTopRight } from "react-icons/cg";
-import { IoImageOutline } from "react-icons/io5";
+import { FaAnglesLeft, FaAnglesRight } from "react-icons/fa6";
+import LeftsidefileExplor from "./Left-side-file-Explor";
 
 export default function EditerPage({
   blob = null,
@@ -182,14 +180,8 @@ export default function EditerPage({
         }
       } else {
         // -> GAP DETECTED
-        // No video found next, but we aren't at the end of the project.
-        // We must trigger the "noVideoArea" loop to keep the playhead moving.
         setCurrentPlayingVideoId("");
         setCurrentTime(currentClipEndTimeOnTimeline);
-
-        if (isPlaying) {
-          noVideoArea({ nextTime: currentClipEndTimeOnTimeline + 0.1 });
-        }
       }
     } else {
       // -- NORMAL PLAYBACK --
@@ -358,90 +350,22 @@ export default function EditerPage({
         <div className="flex-1 flex flex-col gap-1 min-w-0 relative p-1 h-svh">
           {/*1. files */}
           <div className="flex ">
-            <div
-              className={`${
-                isFileExplorerOpen
-                  ? "w-85 mr-1 opacity-100 border p-2"
-                  : "w-0 mr-0 opacity-0 border-0 p-0"
-              } bg-card rounded-md transition-all relative overflow-hidden flex flex-col gap-2`}
-            >
-              <div>Media Files</div>
-              <Separator />
-              <div className="grid grid-cols-2 gap-2">
-                {state.importedFiles.map((imf) => {
-                  if (imf.type.includes("video/")) {
-                    return (
-                      <div key={imf.id} draggable title={imf.name}>
-                        <div className="bg-background overflow-hidden rounded-md aspect-video relative cursor-grab grid place-content-center border border-transparent hover:border-red-400">
-                          <video src={imf.url} controls={false}></video>
-                          <a
-                            href={imf.url}
-                            target="_blank"
-                            className="hover:text-primary absolute right-0 top-0 bg-background rounded"
-                            title="Open File in New tab"
-                          >
-                            <CgArrowTopRight className=" w-4 h-4" />
-                          </a>
-                          <ImFilm className=" absolute bottom-1 left-1 w-4 h-4 text-red-400" />
-                        </div>
-                        <p className=" line-clamp-1">{imf.name}</p>
-                      </div>
-                    );
-                  } else if (imf.type.includes("audio/")) {
-                    return (
-                      <div
-                        key={imf.id}
-                        className=" bg-background overflow-hidden rounded-md aspect-video relative cursor-grab grid place-content-center border border-transparent hover:border-green-400"
-                        title={imf.name}
-                        draggable
-                      >
-                        <a
-                          href={imf.url}
-                          target="_blank"
-                          className="hover:text-primary absolute right-0 top-0 bg-background rounded"
-                          title="Open File in New tab"
-                        >
-                          <CgArrowTopRight className=" w-4 h-4" />
-                        </a>
-                        <GiSoundWaves className=" w-8 h-8 text-green-400" />
-                      </div>
-                    );
-                  } else if (imf.type.includes("images/")) {
-                    return (
-                      <div
-                        key={imf.id}
-                        className=" bg-background overflow-hidden rounded-md aspect-video relative cursor-grab grid place-content-center border border-transparent hover:border-green-400"
-                        title={imf.name}
-                        draggable
-                      >
-                        <img
-                          src={imf.url}
-                          className=" w-full h-full object-contain"
-                        ></img>
-                        <a
-                          href={imf.url}
-                          target="_blank"
-                          className="hover:text-primary absolute right-0 top-0 bg-background rounded"
-                          title="Open File in New tab"
-                        >
-                          <CgArrowTopRight className=" w-4 h-4" />
-                        </a>
-                        <IoImageOutline className=" absolute bottom-1 left-1 w-4 h-4 text-green-400" />
-                      </div>
-                    );
-                  }
-                })}
-              </div>
-            </div>
+            <LeftsidefileExplor
+             isFileExplorerOpen={isFileExplorerOpen}
+             updateVideos={updateVideos}
+             addVideo={addVideo}
+              state={state}  
+              />
             <Button
               variant="secondary"
+              title="Toggle file explorer view"
               onClick={() => setIsFileExplorerOpen((pre) => !pre)}
               size="icon-sm"
               className={`absolute ${
-                isFileExplorerOpen ? "left-89" : "left-3"
+                isFileExplorerOpen ? "left-89 rotate-0" : "left-3 rotate-180"
               } z-50 top-3 border transition-all`}
             >
-              {isFileExplorerOpen ? <FcFolder /> : <FcOpenedFolder />}
+             <FaAnglesLeft />
             </Button>
             <MainPreview
               togglePlay={togglePlay}

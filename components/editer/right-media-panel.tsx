@@ -76,7 +76,7 @@ export default function RightMediaPanel({
   return (
     <div className="w-96 border m-1 ml-0 flex flex-col overflow-hidden bg-card rounded-md">
       {/* Header */}
-      <div className="px-4 py-4 border-b grid grid-cols-2 justify-center items-center gap-2">
+      <div className="p-2 border-b grid grid-cols-2 justify-center items-center gap-2">
         <Button className=" w-full" variant="outline">
             <Save/>
           Save Locally

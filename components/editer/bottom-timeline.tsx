@@ -279,7 +279,10 @@ export default function BottomTimeline({
       if (v.startTime>=deletingClip.startTime) {
         clipUpdate({id:v.id,changeData:{startTime:v.startTime-deletingClipDuration}});
       }
-    })
+    });
+    // to do not showing video after called onseek(0.0)
+      onSeek({time:deletingClip.startTime});
+    
   }
 
   return (

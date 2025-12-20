@@ -18,7 +18,7 @@ export interface VideoTimeLineClip {
   maxTime: number; //orginal video duration
 }
 
-export interface VideoEditorFileProps{
+export interface VideoEditorFileProps {
   id: string;
   name: string;
   url: string;
@@ -35,7 +35,7 @@ export interface VideoEditorState {
     angle: number;
   };
   videos: VideoTimeLineClip[];
-  importedFiles:VideoEditorFileProps[];
+  importedFiles: VideoEditorFileProps[];
   zoompans: {
     time: number;
     level: number;
@@ -59,7 +59,7 @@ export interface VideoAddProps {
   localyStoreVId: string;
 }
 
-export interface  VideoUpdateProps {
+export interface VideoUpdateProps {
   id: string;
   changeData: Partial<VideoTimeLineClip>;
 }
@@ -81,7 +81,7 @@ export function useVideoEditor() {
     },
     zoompans: [],
     videos: [],
-    importedFiles:[],
+    importedFiles: [],
     padding: 0,
     borderRadius: 0,
     transition: "none",
@@ -138,7 +138,15 @@ export function useVideoEditor() {
   }, []);
 
   const addVideo = useCallback(
-    ({ url, id, maxTime, minTime, name, type,localyStoreVId }: VideoAddProps) => {
+    ({
+      url,
+      id,
+      maxTime,
+      minTime,
+      name,
+      type,
+      localyStoreVId,
+    }: VideoAddProps) => {
       setState((prev) => {
         if (prev.videos.some((video) => video.id === id)) {
           // Video with this ID already exists, do nothing
@@ -151,6 +159,28 @@ export function useVideoEditor() {
           startTime = +vd.clipedVideoEndTime;
         });
 
+        let uniqueName = name;
+        let counter = 1;
+
+        // Helper to check if name exists in the current list
+        const isNameTaken = (n: string) =>
+          prev.videos.some((v) => v.name === n);
+
+        while (isNameTaken(uniqueName)) {
+          // Try to handle file extensions gracefully (e.g., "myvideo.mp4" -> "myvideo (1).mp4")
+          const lastDotIndex = name.lastIndexOf(".");
+
+          if (lastDotIndex !== -1) {
+            const fileName = name.substring(0, lastDotIndex);
+            const extension = name.substring(lastDotIndex);
+            uniqueName = `${fileName}-(${counter})${extension}`;
+          } else {
+            // No extension
+            uniqueName = `${name} (${counter})`;
+          }
+          counter++;
+        }
+
         const newVideo: VideoTimeLineClip = {
           id,
           localyStoreVId: localyStoreVId,
@@ -160,7 +190,7 @@ export function useVideoEditor() {
           clipedVideoStartTime: minTime,
           maxTime: maxTime,
           minTime: minTime,
-          name,
+          name: uniqueName,
           channel: "videos-0",
           startTime,
           timeLineColor: getRandomColor(),
@@ -186,22 +216,30 @@ export function useVideoEditor() {
     });
   }, []);
 
-    const deleteVideo = useCallback(({ id }: {id:string}) => {
+  const deleteVideo = useCallback(({ id }: { id: string }) => {
     setState((prev) => {
       const updatedVideos = prev.videos.filter((video) => video.id !== id);
       return { ...prev, videos: updatedVideos };
     });
   }, []);
 
-  const addimportedFiles = useCallback(({id,name,type,url}:VideoEditorFileProps)=>{
-    setState((prev)=>{
-      if (prev.importedFiles.some((imf) => (imf.id === id||imf.name===name))) {
+  const addimportedFiles = useCallback(
+    ({ id, name, type, url }: VideoEditorFileProps) => {
+      setState((prev) => {
+        if (
+          prev.importedFiles.some((imf) => imf.id === id || imf.name === name)
+        ) {
           // file with this ID or name already exists, do nothing
           return prev;
         }
-        return {...prev,importedFiles:[...prev.importedFiles,{id,name,type,url}]}
-    })
-  },[])
+        return {
+          ...prev,
+          importedFiles: [...prev.importedFiles, { id, name, type, url }],
+        };
+      });
+    },
+    []
+  );
 
   return {
     state,
