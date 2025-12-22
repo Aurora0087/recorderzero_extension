@@ -157,7 +157,7 @@ function VideoClipDetailEditer({
   }
 
   return (
-    <div className="p-4 space-y-4">
+    <div className="p-1.5 px-1 space-y-4">
       <div className=" flex items-center justify-between">
         <div className="flex gap-4 items-center">
           <ImFilm className=" text-red-400 w-4 h-4" />

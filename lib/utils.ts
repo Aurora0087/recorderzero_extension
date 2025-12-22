@@ -169,15 +169,7 @@ export const deformatTime = (timeString: string): number | null => {
   }
 };
 
-const clipColors = [
-  "#8CE4FF",
-  "#FEEE91",
-  "#FFA239",
-  "#FF5656",
-  "#4DFFBE",
-  "#FF76CE",
-  "#FF8F8F",
-];
+const clipColors = ["#000000", "#FFFFFF", "#DC143C", "#00FF9C", "#071952", "#F8FAB4", "#F875AA", "#4ED7F1","#EDFFF0","#FFBBE1","#BADFDB","#D2FF72","#6256CA","#FF6600","#6DE1D2","#706D54"];
 
 export function getRandomColor() {
   return clipColors[
