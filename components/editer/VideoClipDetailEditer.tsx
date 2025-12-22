@@ -300,7 +300,6 @@ function VideoClipDetailEditer({
                   changeClipColor(e.target.value);
                 }}
               />
-
               <InputGroupAddon align="inline-start">
                 <IoColorPalette />
               </InputGroupAddon>

@@ -351,6 +351,7 @@ export default function EditerPage({
           {/*1. files */}
           <div className="flex ">
             <LeftsidefileExplor
+            addimportedFiles={addimportedFiles}
              isFileExplorerOpen={isFileExplorerOpen}
              updateVideos={updateVideos}
              addVideo={addVideo}
