@@ -36,6 +36,7 @@ function LeftsidefileExplor({
   const [isDragging, setIsDragging] = useState(false);
   const draggingElementDublicat = useRef<HTMLDivElement>(null);
   const prevHoveredClipRef = useRef<HTMLElement | null>(null);
+  const [isDraggedOverTimeline, setIsDraggedOverTimeline] = useState(false);
 
   const handleMouseDown = (e: React.MouseEvent, id: string) => {
     setIsDragging(true);
@@ -54,11 +55,10 @@ function LeftsidefileExplor({
       if (ele) {
         // Move the ghost element
         ele.style.opacity = "100%";
-        // subtract half width/height if you want it centered on cursor
         ele.style.top = `${e.clientY}px`;
         ele.style.left = `${e.clientX}px`;
 
-        // 2. CRITICAL: Ensure the ghost element ignores mouse events
+        // host element ignores mouse events
         // Otherwise elementsFromPoint will return the ghost element, not the clip below it
         ele.style.pointerEvents = "none";
 
@@ -69,13 +69,29 @@ function LeftsidefileExplor({
         );
 
         // Find the specific drop zone
+        //*********************************************/
+        // view is it over time line
+        const timeLineTracker = elementsUnderCursor.find((element) => {
+          return element.id && element.id === "time-line-tracks";
+        }) as HTMLElement | undefined;
+
+        if (timeLineTracker) {
+          setIsDraggedOverTimeline(true);
+        } else {
+          setIsDraggedOverTimeline(false);
+        }
+        console.log("Is on time line:", timeLineTracker);
+
+        // view is it draged over any clips
         const trackElement = elementsUnderCursor.find((element) => {
           return element.id && element.id.includes("video-clip-");
         }) as HTMLElement | undefined;
 
-        // 3. Logic: Cleanup Previous -> Highlight New
+        //*********************************************/
 
-        // Step A: If we have a stored previous element, and it's NOT the current one, clean it up
+        // Cleanup Previous -> Highlight New
+        //*********************************************/
+        // If we have a stored previous element, and it's NOT the current one, clean it up
         if (
           prevHoveredClipRef.current &&
           prevHoveredClipRef.current !== trackElement
@@ -84,8 +100,8 @@ function LeftsidefileExplor({
           prevHoveredClipRef.current = null;
         }
 
-        // Step B: If we found a valid new track element
-        if (trackElement) {
+        // If we found a valid new track element and mouse over time line
+        if (trackElement && timeLineTracker) {
           // Apply Outline (Fix: Must include style 'solid' and color)
           trackElement.style.border = "dashed red 0.25rem";
 
@@ -96,32 +112,47 @@ function LeftsidefileExplor({
     };
 
     const handleMouseUp = async (e: MouseEvent) => {
+      // prevent defaultes
       e.stopPropagation();
       e.preventDefault();
+
+      // hidde gost element for user
       const ele = draggingElementDublicat.current;
       if (ele) {
         ele.style.opacity = "0%";
         ele.style.top = `${e.clientY}px`;
         ele.style.left = `${e.clientX}px`;
+        ele.style.pointerEvents = "none";
       }
       setIsDragging(false);
-      if (prevHoveredClipRef.current && draggingElementId.length > 0) {
-        const importedFileDetails = state.importedFiles.find(
-          (imf) => imf.id === draggingElementId
-        );
 
+      // get dragging imported file details
+      const importedFileDetails = state.importedFiles.find(
+        (imf) => imf.id === draggingElementId
+      );
+
+      // is hover ended over a clip on time line and dragging file has a id
+      if (draggingElementId.length > 0 && isDraggedOverTimeline) {
+        // is dragging file is a video
         if (
           importedFileDetails &&
           importedFileDetails.type.includes("video/")
         ) {
+          // get video duration
           const newVideoDuration = await getVideoDuration(
             importedFileDetails.url
           );
-          const slidingVideoClipId =
-            prevHoveredClipRef.current.getAttribute("video-clip-id");
+          let slidingVideoClipId: string | null = null;
+
+          if (prevHoveredClipRef.current) {
+            // the clip where dragging stoped
+            slidingVideoClipId =
+              prevHoveredClipRef.current.getAttribute("video-clip-id");
+          }
 
           const newVideoId = makeId();
 
+          // add clip in time line
           addVideo({
             url: importedFileDetails.url,
             name: importedFileDetails.name,
@@ -132,6 +163,7 @@ function LeftsidefileExplor({
             localyStoreVId: importedFileDetails.id,
           });
 
+          // if dragging endes over a clip push all clips to right side and update new clip's start point where slidingVideoClip startpoint was
           if (slidingVideoClipId) {
             const slidingVideoClip = state.videos.find(
               (v) => v.id === slidingVideoClipId
@@ -154,12 +186,37 @@ function LeftsidefileExplor({
                 id: newVideoId,
                 changeData: { startTime: newVideoStartingPoint },
               });
+              toast.success(`Video added before ""${slidingVideoClip.name}"". `);
             }
+          } 
+          // place end of the all clips
+          else {
+            let maxStartTime = -1;
+            let lastClip = state.videos[0] || null;
+
+            state.videos.forEach((v) => {
+              if (v.startTime > maxStartTime) {
+                lastClip = v;
+                maxStartTime = v.startTime;
+              }
+            });
+            if (lastClip) {
+              maxStartTime =
+                lastClip.startTime +
+                (lastClip.clipedVideoEndTime - lastClip.clipedVideoStartTime);
+            }
+            updateVideos({
+              id: newVideoId,
+              changeData: { startTime: maxStartTime },
+            });
+            toast.success(`Video added in last of the timeline.`);
           }
         }
-        prevHoveredClipRef.current.style.border = "";
-        prevHoveredClipRef.current = null;
-        toast.success("File added n timeline.");
+        if (prevHoveredClipRef.current) {
+          // remove added css
+          prevHoveredClipRef.current.style.border = "";
+          prevHoveredClipRef.current = null;
+        }
       }
     };
 
@@ -171,7 +228,7 @@ function LeftsidefileExplor({
       document.removeEventListener("mousemove", handleMouseMove);
       document.removeEventListener("mouseup", handleMouseUp);
     };
-  }, [isDragging]);
+  }, [isDragging, isDraggedOverTimeline]);
 
   return (
     <div

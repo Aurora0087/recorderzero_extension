@@ -295,7 +295,7 @@ function VideoClipDetailEditer({
               <InputGroupInput
                 className=" transition-all"
                 type="color"
-                defaultValue={editableFildInput.color}
+                value={editableFildInput.color}
                 onChange={(e) => {
                   changeClipColor(e.target.value);
                 }}

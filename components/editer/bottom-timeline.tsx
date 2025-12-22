@@ -37,8 +37,16 @@ interface BottomTimelineProps {
   onSeek: ({ time }: { time: number }) => void;
   setSelectedVideoClipId: (videoId: string | null) => void;
   clipUpdate: ({ id, changeData }: VideoUpdateProps) => void;
-  addVideo: ({ url, id, maxTime, minTime, name, type, localyStoreVId }: VideoAddProps) => void
-  deleteVideo:({id}:{id:string})=>void
+  addVideo: ({
+    url,
+    id,
+    maxTime,
+    minTime,
+    name,
+    type,
+    localyStoreVId,
+  }: VideoAddProps) => void;
+  deleteVideo: ({ id }: { id: string }) => void;
 }
 
 // --- Helper Component: D3 Ruler ---
@@ -86,7 +94,7 @@ export default function BottomTimeline({
   setSelectedVideoClipId,
   clipUpdate,
   addVideo,
-  deleteVideo
+  deleteVideo,
 }: BottomTimelineProps) {
   // State for timeline scaling (Zoom)
   const [pixelsPerSecond, setPixelsPerSecond] = useState(50);
@@ -130,7 +138,10 @@ export default function BottomTimeline({
     );
     const trackElement = elementsUnderCursor.find((element) => {
       // whene cliping on clipes for edit dont want to go to that time line
-      return element.id.includes("video-clip-") || element.classList.contains("video-clip-contextMenu");
+      return (
+        element.id.includes("video-clip-") ||
+        element.classList.contains("video-clip-contextMenu")
+      );
     });
     if (!trackElement) {
       const rect = containerRef.current.getBoundingClientRect();
@@ -268,22 +279,98 @@ export default function BottomTimeline({
     }
   };
 
-  const deleteClipAction = (clipId:string)=>{
-    const deletingClip = videos.find((v)=>v.id===clipId);
+  const deleteClipAction = (clipId: string) => {
+    const deletingClip = videos.find((v) => v.id === clipId);
     if (!deletingClip) {
-      return
+      return;
     }
-    const deletingClipDuration = deletingClip.clipedVideoEndTime-deletingClip.clipedVideoStartTime;
-    deleteVideo({id:deletingClip.id});
-    videos.map((v)=>{
-      if (v.startTime>=deletingClip.startTime) {
-        clipUpdate({id:v.id,changeData:{startTime:v.startTime-deletingClipDuration}});
+    const deletingClipDuration =
+      deletingClip.clipedVideoEndTime - deletingClip.clipedVideoStartTime;
+    deleteVideo({ id: deletingClip.id });
+    videos.map((v) => {
+      if (v.startTime >= deletingClip.startTime) {
+        clipUpdate({
+          id: v.id,
+          changeData: { startTime: v.startTime - deletingClipDuration },
+        });
       }
     });
     // to do not showing video after called onseek(0.0)
-      onSeek({time:deletingClip.startTime});
-    
-  }
+    onSeek({ time: deletingClip.startTime });
+  };
+
+  const replaceClipWithAnother = ({
+    replaceingClipId,
+    draggingIngClip,
+  }: {
+    draggingIngClip: VideoTimeLineClip;
+    replaceingClipId: string;
+  }) => {
+    const targetClip = videos.find((v) => v.id === replaceingClipId);
+    if (!targetClip) return;
+
+    // 1. Setup Variables
+    const draggedDuration =
+      draggingIngClip.clipedVideoEndTime - draggingIngClip.clipedVideoStartTime;
+
+    const oldStart = draggingIngClip.startTime;
+    const newStart = targetClip.startTime;
+
+    // 2. Logic Split based on Direction
+    if (oldStart > newStart) {
+      // === DIRECTION: RIGHT TO LEFT (Moving Earlier) ===
+      // Example: Moving Clip C(20s) to Clip A(0s)
+      // 1. Dragged Clip takes the new spot (0s)
+      // 2. Clips in between shift RIGHT to make room (+ duration)
+
+      videos.forEach((v) => {
+        // Case A: The Dragged Clip
+        if (v.id === draggingIngClip.id) {
+          clipUpdate({ id: v.id, changeData: { startTime: newStart } });
+        }
+        // Case B: Clips between new spot and old spot (inclusive of target)
+        // These need to move RIGHT
+        else if (v.startTime >= newStart && v.startTime < oldStart) {
+          clipUpdate({
+            id: v.id,
+            changeData: { startTime: v.startTime + draggedDuration },
+          });
+        }
+      });
+    } else {
+      // === DIRECTION: LEFT TO RIGHT (Moving Later) ===
+      // Example: Moving Clip A(0s) to Clip C(20s)
+      // 1. Dragged Clip takes the new spot (20s)
+      // 2. Clips in between shift LEFT to fill the old gap (- duration)
+
+      let totalDurationOfSlidedClips = draggingIngClip.startTime;
+
+      videos.forEach((v) => {
+        // Case B: Clips between old spot and new spot (inclusive of target)
+        // These need to move LEFT
+        if (
+          v.id !== draggingIngClip.id &&
+          v.startTime > oldStart &&
+          v.startTime <= newStart
+        ) {
+          clipUpdate({
+            id: v.id,
+            changeData: { startTime: v.startTime - draggedDuration },
+          });
+          totalDurationOfSlidedClips +=
+            v.clipedVideoEndTime - v.clipedVideoStartTime;
+        }
+      });
+
+      // Case A: The Dragged Clip
+      if (draggingIngClip.id) {
+        clipUpdate({
+          id: draggingIngClip.id,
+          changeData: { startTime: totalDurationOfSlidedClips },
+        });
+      }
+    }
+  };
 
   return (
     <div className="bg-card/20 rounded-md overflow-hidden border flex flex-col h-full min-h-32 select-none">
@@ -401,6 +488,7 @@ export default function BottomTimeline({
           </div>
         </div>
         <div
+          id="time-line-tracks"
           className="flex-1 overflow-x-auto overflow-y-hidden relative bg-black/30 transition-transform"
           ref={containerRef}
           onMouseDown={handleTimelineClick}
@@ -478,6 +566,7 @@ export default function BottomTimeline({
               >
                 {videos.map((clip) => (
                   <VideoClipBox
+                    replaceClipWithAnother={replaceClipWithAnother}
                     clipUpdate={clipUpdate}
                     currentTime={currentTime}
                     key={clip.id}

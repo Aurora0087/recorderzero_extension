@@ -11,18 +11,11 @@ import {
 } from "react-icons/ri";
 import { makeId } from "@/lib/utils";
 import { toast } from "sonner";
+import { VideoTimeLineClip } from "@/hooks/use-video-editor";
 
-function VideoClipBox({
-  clip,
-  pixelsPerSecond,
-  setSelectedVideoClipId,
-  clipUpdate,
-  onSeek,
-  addVideo,
-  currentTime,
-  deleteClipAction
-}: {
-  clip: VideoTimeLineClip;
+
+interface VideoClipBoxProps{
+clip: VideoTimeLineClip;
   pixelsPerSecond: number;
   setSelectedVideoClipId: (videoId: string | null) => void;
   clipUpdate: ({ id, changeData }: VideoUpdateProps) => void;
@@ -37,9 +30,25 @@ function VideoClipBox({
     localyStoreVId,
   }: VideoAddProps) => void;
   currentTime: number;
-  deleteClipAction: (clipId: string) => void
-}) {
-  const clipBox = useRef(null);
+  deleteClipAction: (clipId: string) => void;
+  replaceClipWithAnother: ({ replaceingClipId, draggingIngClip }: {
+    draggingIngClip: VideoTimeLineClip;
+    replaceingClipId: string;
+}) => void
+}
+
+function VideoClipBox({
+  clip,
+  pixelsPerSecond,
+  setSelectedVideoClipId,
+  clipUpdate,
+  onSeek,
+  addVideo,
+  currentTime,
+  deleteClipAction,
+  replaceClipWithAnother
+}: VideoClipBoxProps) {
+  const clipBox = useRef<HTMLDivElement|null>(null);
   const duration = clip.clipedVideoEndTime - clip.clipedVideoStartTime;
   const width = duration * pixelsPerSecond;
 
@@ -50,6 +59,7 @@ function VideoClipBox({
 
   const [isDragging, setIsDragging] = useState(false);
   const [leftPosition, setLeftPosition] = useState(initialLeft);
+  const prevHoveredClipRef = useRef<HTMLElement | null>(null);
 
   // Keep local state in sync if props change (e.g. zooming / pixelsPerSecond changes)
   useEffect(() => {
@@ -76,19 +86,17 @@ function VideoClipBox({
     // Get limits
     const wrapperRect = wrapper.getBoundingClientRect();
 
-    // We need to calculate the cursor offset relative to the clip's current left
-    // But a simpler approach for timelines is measuring delta movement
-    let startX = 0;
-
     const handleMouseMove = (e: MouseEvent) => {
+      if (clipBox.current) {
+        clipBox.current.style.pointerEvents="none";
+      }
       // 1. Calculate Position (Your existing logic)
       const relativeX = e.clientX - wrapperRect.left + wrapper.scrollLeft;
       let newLeft = relativeX;
       if (newLeft < 0) newLeft = 0;
-      //setLeftPosition(newLeft);
+      setLeftPosition(newLeft);
 
       // 2. Find elements underneath
-      // elementsFromPoint returns an array: [DraggedClip, TextInsideClip, TrackContainer, AppBackground...]
       const elementsUnderCursor = document.elementsFromPoint(
         e.clientX,
         e.clientY
@@ -96,40 +104,54 @@ function VideoClipBox({
 
       // 3. Find the specific "Track" element
       // Assuming your track divs have a class or ID to identify them (e.g., className="video-track")
-      const trackElement = elementsUnderCursor.find((element) => {
+      const replaceIngClipElement = elementsUnderCursor.find((element) => {
         // Check if this is a valid drop zone
-        return element.id.includes("time-line-ruler");
-      });
+        return element.id.includes("video-clip-");
+      })as HTMLElement | undefined;
 
-      if (trackElement) {
-        // You can visually highlight the track here if you want
-        const timeValue = Number(trackElement.getAttribute("time-value"));
+      if (replaceIngClipElement) {
 
-        if (!isNaN(timeValue)) {
-          setLeftPosition(timeValue * pixelsPerSecond);
+        if (prevHoveredClipRef.current) {
+          prevHoveredClipRef.current.style.border = "";
         }
+        replaceIngClipElement.style.border = "dashed green 0.25rem";
+
+        prevHoveredClipRef.current=replaceIngClipElement;
+      }else{
+        if (prevHoveredClipRef.current) {
+          prevHoveredClipRef.current.style.border = "";
+        }
+        prevHoveredClipRef.current=null;
       }
     };
 
     const handleMouseUp = (e: MouseEvent) => {
       e.stopPropagation(); // Prevent playhead seeking
       e.preventDefault();
+
+      if (clipBox.current) {
+        clipBox.current.style.pointerEvents="auto";
+      }
       setIsDragging(false);
-      const newStartTime = leftPosition / pixelsPerSecond;
-      clipUpdate({
-        id: clip.id,
-        changeData: { startTime: newStartTime },
-      });
-      onSeek({ time: newStartTime });
+      if (prevHoveredClipRef.current) {
+        // get clip/video id from element's attribute
+        const clipId = prevHoveredClipRef.current.getAttribute("video-clip-id");
+
+        if (clipId) {
+          replaceClipWithAnother({draggingIngClip:clip,replaceingClipId:clipId});
+        }
+        prevHoveredClipRef.current.style.border = "";
+      }
+      prevHoveredClipRef.current=null;
     };
 
     // Attach listeners to DOCUMENT to handle fast movements outside the div
-    //document.addEventListener("mousemove", handleMouseMove);
-    //document.addEventListener("mouseup", handleMouseUp);
+    document.addEventListener("mousemove", handleMouseMove);
+    document.addEventListener("mouseup", handleMouseUp);
 
     return () => {
-      //document.removeEventListener("mousemove", handleMouseMove);
-      //document.removeEventListener("mouseup", handleMouseUp);
+      document.removeEventListener("mousemove", handleMouseMove);
+      document.removeEventListener("mouseup", handleMouseUp);
     };
   }, [isDragging, pixelsPerSecond, leftPosition]);
 
@@ -199,15 +221,12 @@ function VideoClipBox({
           video-clip="true"
           video-clip-id={clip.id}
           ref={clipBox}
-          //onMouseDown={handleMouseDown}
+          onMouseDown={handleMouseDown}
           className={`absolute h-16 rounded-md border text-background overflow-hidden cursor-pointer transition-opacity ${
             isDragging
               ? "opacity-80 z-50 shadow-lg cursor-grabbing"
               : "opacity-90 hover:opacity-100 cursor-grab"
           }`}
-          onClick={(e) => {
-            setSelectedVideoClipId(clip.id);
-          }}
           style={{
             left: `${leftPosition}px`,
             width: `${width}px`,
