@@ -1,4 +1,4 @@
-import { getRandomColor, makeId } from "@/lib/utils";
+import { getRandomColor } from "@/lib/utils";
 import { useState, useCallback } from "react";
 
 ///////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////
@@ -11,9 +11,26 @@ export interface VideoTimeLineClip {
   timeLineColor: string;
   url: string;
   type: string;
+  muted?:boolean;
   startTime: number; // strting position in time line
   clipedVideoStartTime: number; // after cut/croping orginalvideo.mintime+leftcropValue
   clipedVideoEndTime: number; // after cut/croping orginalvideo.maxtime+leftcropValue
+  minTime: number; //0
+  maxTime: number; //orginal video duration
+}
+
+export interface AudioTimeLine {
+  id: string;
+  localyStoreVId: string;
+  channel: string;
+  name: string;
+  timeLineColor: string;
+  url: string;
+  type: string;
+  likedVideoClipId:string|null;
+  startTime: number; // strting position in time line
+  clipedAudioStartTime: number; // after cut/croping orginalvideo.mintime+leftcropValue
+  clipedAudioEndTime: number; // after cut/croping orginalvideo.maxtime+leftcropValue
   minTime: number; //0
   maxTime: number; //orginal video duration
 }
@@ -35,6 +52,7 @@ export interface VideoEditorState {
     angle: number;
   };
   videos: VideoTimeLineClip[];
+  audios:AudioTimeLine[];
   importedFiles: VideoEditorFileProps[];
   zoompans: {
     time: number;
@@ -81,9 +99,10 @@ export function useVideoEditor() {
     },
     zoompans: [],
     videos: [],
+    audios:[],
     importedFiles: [],
-    padding: 0,
-    borderRadius: 0,
+    padding: 50,
+    borderRadius: 20,
     transition: "none",
     transitionDuration: 0.5,
   });
@@ -194,6 +213,7 @@ export function useVideoEditor() {
           channel: "videos-0",
           startTime,
           timeLineColor: getRandomColor(),
+          muted:false,
         };
         return { ...prev, videos: [...prev.videos, newVideo] };
       });

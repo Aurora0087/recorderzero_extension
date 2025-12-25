@@ -13,7 +13,6 @@ interface MainPreviewProps {
   setIsPlaying: (value: SetStateAction<boolean>) => void;
   onLoadedMetadata: () => void;
   onTimeUpdateHandel: ({ vid }: { vid: string }) => void;
-  onImportClick: () => void;
   currentTime: number;
   clipStart: number;
   clipEnd: number;
@@ -38,7 +37,6 @@ export default function MainPreview({
   setIsPlaying,
   onLoadedMetadata,
   onTimeUpdateHandel,
-  onImportClick,
   currentTime,
   backgroundColor,
   backgroundGradient,
@@ -120,17 +118,17 @@ export default function MainPreview({
       0.5;
     setActivePaddingY(extraPH * scaleFactorW);
     setActiveRadiusing(borderRadius * scaleFactorW);
-  }, [backgroundColor, backgroundGradient, padding, borderRadius]);
+  }, [backgroundColor, backgroundGradient, padding, borderRadius,videos]);
 
   // Main Effect: Set up listeners
   useEffect(() => {
     renderFrame();
-  }, [videoRefs]);
+  }, [videoRefs,videos]);
 
   // Effect: Re-render when style props change
   useEffect(() => {
     requestAnimationFrame(renderFrame);
-  }, [currentTime, padding, borderRadius, backgroundColor, backgroundGradient]);
+  }, [currentTime, padding, borderRadius, backgroundColor, backgroundGradient,videos]);
 
   return (
     <div className="flex-1 flex flex-col items-center justify-center bg-card overflow-hidden rounded-md border p-2">
@@ -173,6 +171,7 @@ export default function MainPreview({
                           videoRefs.current.delete(v.id);
                         }
                       }}
+                      muted={v.muted}
                       onTimeUpdate={()=>onTimeUpdateHandel({vid:v.id})}
                       onEnded={()=>{console.log("VideoEnd.");
                       }}

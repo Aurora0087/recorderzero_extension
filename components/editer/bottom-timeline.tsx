@@ -1,13 +1,6 @@
 import type React from "react";
 
-import {
-  type RefObject,
-  type SetStateAction,
-  useRef,
-  useState,
-  useMemo,
-  useEffect,
-} from "react";
+import { type RefObject, useRef, useState, useMemo, useEffect } from "react";
 import { Pause, Play, ZoomIn, ZoomOut } from "lucide-react";
 import { IoPlaySkipBack, IoPlaySkipForward } from "react-icons/io5";
 import { ImFilm } from "react-icons/im";
@@ -372,6 +365,20 @@ export default function BottomTimeline({
     }
   };
 
+  // --- Drag Handlers for Indicators ---
+
+  const handleStartDrag = (newTime: number) => {
+    // Ensure start doesn't pass end
+    if (newTime >= clipEnd) return;
+    onUpdateClip(newTime, clipEnd);
+  };
+
+  const handleEndDrag = (newTime: number) => {
+    // Ensure end doesn't go before start
+    if (newTime <= clipStart) return;
+    onUpdateClip(clipStart, newTime);
+  };
+
   return (
     <div className="bg-card/20 rounded-md overflow-hidden border flex flex-col h-full min-h-32 select-none">
       {/* --- Toolbar --- */}
@@ -506,52 +513,62 @@ export default function BottomTimeline({
               />
             </div>
 
-            {/* Start Clip Indicator */}
-            <div
-              className="absolute top-12 bottom-0 z-10 w-0.5 bg-green-500 pointer-events-none"
-              style={{ left: `${clipStart * pixelsPerSecond}px` }}
-            >
-              <div className="absolute -top-6 left-1/2 transform -translate-x-1/2 text-xs font-bold text-green-500 bg-black/50 px-2 py-1 whitespace-nowrap">
-                Start
-              </div>
-            </div>
+            {/* Draggable Indicators */}
+            <DraggableIndicator
+              time={clipStart}
+              pixelsPerSecond={pixelsPerSecond}
+              maxDuration={maxDuration}
+              color="#22c55e" // Green
+              label="Start"
+              onChange={handleStartDrag}
+              containerRef={containerRef}
+            />
 
-            {/* End Clip Indicator */}
-            <div
-              className="absolute top-12 bottom-0 z-10 w-0.5 bg-orange-500 pointer-events-none"
-              style={{ left: `${clipEnd * pixelsPerSecond}px` }}
-            >
-              <div className="absolute -top-6 left-1/2 transform -translate-x-1/2 text-xs font-bold text-orange-500 bg-black/50 px-2 py-1 whitespace-nowrap">
-                End
-              </div>
-            </div>
+            <DraggableIndicator
+              time={clipEnd}
+              pixelsPerSecond={pixelsPerSecond}
+              maxDuration={maxDuration}
+              color="#f97316" // Orange
+              label="End"
+              onChange={handleEndDrag}
+              containerRef={containerRef}
+            />
 
-            {/* Semi-transparent overlay for clipped region */}
+            {/* 3. Inverted Overlay (Darken areas OUTSIDE selection) */}
+            {/* Left Overlay (0 to Start) */}
             <div
-              className="absolute top-6 bottom-0 z-5 bg-primary/10 pointer-events-none"
+              className="absolute top-0 bottom-0 z-10 bg-black/20 pointer-events-none backdrop-grayscale"
               style={{
-                left: `${clipStart * pixelsPerSecond}px`,
-                width: `${(clipEnd - clipStart) * pixelsPerSecond}px`,
+                left: 0,
+                width: `${clipStart * pixelsPerSecond}px`,
+              }}
+            />
+            {/* Right Overlay (End to Max) */}
+            <div
+              className="absolute top-0 bottom-0 z-10 bg-black/20 pointer-events-none backdrop-grayscale"
+              style={{
+                left: `${clipEnd * pixelsPerSecond}px`,
+                right: 0,
               }}
             />
 
             {/* B. Playhead (Cursor) */}
             <div
-              ref={playheadRef} // Add ref to playhead
-              className="absolute top-0 bottom-0 z-50 transition-all duration-75 pointer-events-none" // Add cursor styles and make interactive
+              ref={playheadRef}
+              className="absolute top-0 bottom-0 z-50 pointer-events-none"
               style={{ left: `${currentTime * pixelsPerSecond}px` }}
               title="Playhead cursor"
             >
               <div
-                className="w-fit h-fit p-1 -ml-[50%] text-center bg-red-400 rounded-md transition-transform text-[0.5rem] text-white pointer-events-auto cursor-ew-resize hover:text-xs"
+                className="w-fit h-fit p-1 px-2 -ml-[50%] text-center bg-red-400 rounded-b-md transition-transform text-[0.5rem] text-white pointer-events-auto cursor-ew-resize hover:text-xs"
                 onMouseDown={handlePlayheadMouseDown}
               >
                 {formatTime(currentTime)}
               </div>
               <div
-                className=" bg-red-400 w-0.5 h-full cursor-ew-resize pointer-events-auto"
-                onMouseDown={handlePlayheadMouseDown} // Add mouse down handler for dragging
-              ></div>
+                className=" bg-red-400 w-px h-full cursor-ew-resize pointer-events-auto"
+                onMouseDown={handlePlayheadMouseDown}
+              />
             </div>
 
             {/* C. Tracks / Clips Layer */}
@@ -587,3 +604,79 @@ export default function BottomTimeline({
     </div>
   );
 }
+
+//////////////////////////////////////////////////////////////////////////////////////////////////
+
+const DraggableIndicator = ({
+  time,
+  pixelsPerSecond,
+  maxDuration,
+  color,
+  label,
+  onChange,
+  containerRef,
+}: {
+  time: number;
+  pixelsPerSecond: number;
+  maxDuration: number;
+  color: string;
+  label: string;
+  onChange: (newTime: number) => void;
+  containerRef: RefObject<HTMLDivElement | null>;
+}) => {
+  const [isDragging, setIsDragging] = useState(false);
+
+  useEffect(() => {
+    if (!isDragging) return;
+
+    const handleMouseMove = (e: MouseEvent) => {
+      if (!containerRef.current) return;
+
+      const rect = containerRef.current.getBoundingClientRect();
+      const relativeX = e.clientX - rect.left + containerRef.current.scrollLeft;
+      const newTime = Math.max(
+        0,
+        Math.min(relativeX / pixelsPerSecond, maxDuration)
+      );
+
+      onChange(newTime);
+    };
+
+    const handleMouseUp = () => {
+      setIsDragging(false);
+    };
+
+    document.addEventListener("mousemove", handleMouseMove);
+    document.addEventListener("mouseup", handleMouseUp);
+    return () => {
+      document.removeEventListener("mousemove", handleMouseMove);
+      document.removeEventListener("mouseup", handleMouseUp);
+    };
+  }, [isDragging, pixelsPerSecond, maxDuration, onChange, containerRef]);
+
+  return (
+    <div
+      className={`absolute top-0 bottom-0 z-20 w-px cursor-ew-resize group`}
+      style={{
+        left: `${time * pixelsPerSecond}px`,
+        backgroundColor: color,
+      }}
+      onMouseDown={(e) => {
+        e.stopPropagation();
+        e.preventDefault();
+        setIsDragging(true);
+      }}
+    >
+      <div
+        className={`absolute top-0 left-1/2 -translate-x-1/2 text-[0.6rem] font-bold text-white px-2 py-1 rounded-b-md whitespace-nowrap opacity-80 group-hover:opacity-100 ${
+          isDragging ? "opacity-100 scale-110" : ""
+        }`}
+        style={{ backgroundColor: color }}
+      >
+        {label}: {formatTime(time)}
+      </div>
+      {/* Full height line helper */}
+      <div className={`w-full h-full bg-${color}-500 opacity-50`}></div>
+    </div>
+  );
+};

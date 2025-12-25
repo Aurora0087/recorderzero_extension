@@ -92,9 +92,9 @@ export default function RightMediaPanel({
             value="bg"
             className="overflow-hidden rounded-lg border border-border/50 bg-card shadow-sm transition-shadow hover:shadow"
           >
-            <AccordionTrigger className="px-4 py-3 hover:no-underline hover:bg-accent/50 transition-colors data-[state=open]:bg-accent/30">
+            <AccordionTrigger className="cursor-pointer px-2 py-1.5 flex items-center hover:no-underline hover:bg-accent/50 transition-colors data-[state=open]:bg-accent/30">
               <div className="flex items-center gap-3">
-                <div className="flex h-8 w-8 items-center justify-center rounded-md bg-primary/10">
+                <div className="flex h-6 w-6 items-center justify-center rounded-md bg-primary/10">
                   <TbBackground className="h-4 w-4 text-primary" />
                 </div>
                 <span className="font-semibold">Background</span>
@@ -204,9 +204,9 @@ export default function RightMediaPanel({
             value="padding-radius"
             className="overflow-hidden rounded-lg border border-border/50 bg-card shadow-sm transition-shadow hover:shadow"
           >
-            <AccordionTrigger className="px-4 py-3 hover:no-underline hover:bg-accent/50 transition-colors data-[state=open]:bg-accent/30">
+            <AccordionTrigger className="cursor-pointer px-2 py-1.5 flex items-center hover:no-underline hover:bg-accent/50 transition-colors data-[state=open]:bg-accent/30">
               <div className="flex items-center gap-3">
-                <div className="flex h-8 w-8 items-center justify-center rounded-md bg-primary/10">
+                <div className="flex h-6 w-6 items-center justify-center rounded-md bg-primary/10">
                   <RxCorners className="h-4 w-4 text-primary" />
                 </div>
                 <span className="font-semibold">Padding & Radius</span>
@@ -253,9 +253,9 @@ export default function RightMediaPanel({
             value="transitions"
             className="overflow-hidden rounded-lg border border-border/50 bg-card shadow-sm transition-shadow hover:shadow"
           >
-            <AccordionTrigger className="px-4 py-3 hover:no-underline hover:bg-accent/50 transition-colors data-[state=open]:bg-accent/30">
+            <AccordionTrigger className="cursor-pointer px-2 py-1.5 flex items-center hover:no-underline hover:bg-accent/50 transition-colors data-[state=open]:bg-accent/30">
               <div className="flex items-center gap-3">
-                <div className="flex h-8 w-8 items-center justify-center rounded-md bg-primary/10">
+                <div className="flex h-6 w-6 items-center justify-center rounded-md bg-primary/10">
                   <MdAnimation className="h-4 w-4 text-primary" />
                 </div>
                 <span className="font-semibold">Transitions</span>
@@ -303,15 +303,15 @@ export default function RightMediaPanel({
             value="selected-clip"
             className="overflow-hidden rounded-lg border border-border/50 bg-card shadow-sm transition-shadow hover:shadow"
           >
-            <AccordionTrigger className="px-4 py-3 hover:no-underline hover:bg-accent/50 transition-colors data-[state=open]:bg-accent/30">
+            <AccordionTrigger className=" cursor-pointer px-2 py-1.5 flex items-center hover:no-underline hover:bg-accent/50 transition-colors data-[state=open]:bg-accent/30">
               <div className="flex items-center gap-3">
-                <div className="flex h-8 w-8 items-center justify-center rounded-md bg-primary/10">
+                <div className="flex h-6 w-6 items-center justify-center rounded-md bg-primary/10">
                   <MdDataObject className="h-4 w-4 text-primary" />
                 </div>
                 <span className="font-semibold">Selected Clip</span>
               </div>
             </AccordionTrigger>
-            <AccordionContent className="px-4 pb-4 pt-2">
+            <AccordionContent className="px-4 py-2">
               {selectedVideoId && state.videos.length > 0 ? (
                 <VideoClipDetailEditer selectedClipId={selectedVideoId} state={state} clipUpdate={clipUpdate} />
               ) : (

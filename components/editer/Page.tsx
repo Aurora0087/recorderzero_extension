@@ -376,16 +376,6 @@ export default function EditerPage({
               videos={state.videos}
               onLoadedMetadata={handleLoadedMetadata}
               onTimeUpdateHandel={handleTimeUpdate}
-              onImportClick={() => {
-                const input = document.createElement("input");
-                input.type = "file";
-                input.accept = "video/*";
-                input.onchange = (e: any) => {
-                  const file = e.target.files?.[0];
-                  if (file) handleVideoUpload(file);
-                };
-                input.click();
-              }}
               currentTime={currentTime}
               clipStart={state.clipStart}
               clipEnd={state.clipEnd}

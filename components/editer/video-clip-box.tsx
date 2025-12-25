@@ -70,6 +70,8 @@ function VideoClipBox({
 
   // --- 1. Start Dragging ---
   const handleMouseDown = (e: React.MouseEvent) => {
+    // Only proceed if the left mouse button (0) was clicked
+  if (e.button !== 0) return;
     e.stopPropagation(); // Prevent playhead seeking
     e.preventDefault(); // Prevent text selection
     setIsDragging(true);

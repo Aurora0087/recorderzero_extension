@@ -1,4 +1,4 @@
-import { Clock, Crop, Pen } from "lucide-react";
+import { Clock, Crop, ExternalLink, Hash, Info, Pen, Volume2, VolumeOff } from "lucide-react";
 import { Separator } from "../ui/separator";
 import {
   InputGroup,
@@ -12,6 +12,10 @@ import { FcTimeline } from "react-icons/fc";
 import { ImFilm } from "react-icons/im";
 import { toast } from "sonner";
 import { VideoUpdateProps } from "@/hooks/use-video-editor";
+import { Button } from "../ui/button";
+import { Label } from "../ui/label";
+import { Input } from "../ui/input";
+import { Badge } from "../ui/badge";
 
 function VideoClipDetailEditer({
   state,
@@ -22,305 +26,246 @@ function VideoClipDetailEditer({
   clipUpdate: ({ id, changeData }: VideoUpdateProps) => void;
   selectedClipId: string;
 }) {
-  const [selectedVideoClip, setSelectedVideoClip] =
-    useState<null | VideoTimeLineClip>(null);
-  const [editableFildInput, setEditableFildInput] = useState({
-    id: "idNotGiven",
-    clipedVideoEndTime: "0",
-    clipedVideoStartTime: "0",
+    const [selectedVideoClip, setSelectedVideoClip] = useState<null | VideoTimeLineClip>(null)
+  const [editableFields, setEditableFields] = useState({
+    name: "",
+    startTime: "",
+    cropStart: "",
+    cropEnd: "",
     color: "#000000",
-    name: "noname",
-    strtTime: "0",
-  });
+  })
 
   useEffect(() => {
-    const vc = state.videos.find((a) => a.id === selectedClipId);
+    const vc = state.videos.find((a) => a.id === selectedClipId)
     if (vc) {
-      setSelectedVideoClip(vc);
-      setEditableFildInput({
-        id: vc.id,
-        clipedVideoEndTime: vc.clipedVideoEndTime.toString(),
-        clipedVideoStartTime: vc.clipedVideoStartTime.toString(),
-        color: vc.timeLineColor,
+      setSelectedVideoClip(vc)
+      setEditableFields({
         name: vc.name,
-        strtTime: vc.startTime.toString(),
-      });
+        startTime: formatTime(vc.startTime),
+        cropStart: formatTime(vc.clipedVideoStartTime),
+        cropEnd: formatTime(vc.clipedVideoEndTime),
+        color: vc.timeLineColor,
+      })
     }
-  }, [selectedClipId, state]);
+  }, [selectedClipId, state])
 
-  if (selectedVideoClip === null) {
-    return <div className="h-24 animate-pulse bg-accent m-4 rounded-md"></div>;
+  if (!selectedVideoClip) {
+    return <div className="h-24 animate-pulse bg-muted/50 m-4 rounded-lg" />
   }
 
-  function changeName(e: React.KeyboardEvent<HTMLInputElement>) {
-    if (e.key === "Enter") {
-      //verify is it same file extention
-
-      //name len>1
-      if (!selectedVideoClip) {
-        toast.warning("Video clip not Selected.");
-        return;
-      }
-      clipUpdate({
-        id: selectedVideoClip.id,
-        changeData: { name: editableFildInput.name },
-      });
-      toast.success("Video Clip's Name Changes.");
-    }
-  }
-
-  function changeClipColor(newColor: string) {
-    if (!selectedVideoClip) {
-      toast.warning("Video clip not Selected.");
-      return;
-    }
+  const handleNameUpdate = () => {
+    if (editableFields.name.trim().length < 1) return
     clipUpdate({
       id: selectedVideoClip.id,
-      changeData: { timeLineColor: newColor },
-    });
+      changeData: { name: editableFields.name },
+    })
+    toast.success("Clip name updated")
   }
 
-  //position in time line
-  const updateRenderVideoClip = ({
-    start = null,
-    end = null,
-  }: {
-    start?: string | null;
-    end?: string | null;
-  }) => {
-    if (!start && !end) {
-      toast.error("Values not given in UpdateRenderVideoClip.");
-      return;
+  const handleColorUpdate = (color: string) => {
+    setEditableFields((prev) => ({ ...prev, color }))
+    clipUpdate({
+      id: selectedVideoClip.id,
+      changeData: { timeLineColor: color },
+    })
+  }
+
+  const handleTimeUpdate = (type: "startTime" | "cropStart" | "cropEnd") => {
+    const value = editableFields[type]
+    const seconds = deformatTime(value)
+
+    if (seconds === null) {
+      toast.error("Invalid time format (MM:SS.MS)")
+      return
     }
 
-    // Process start time
-    if (start) {
-      const startTime = deformatTime(start);
-      if (startTime === null) {
-        toast.error("Invalid start time format. Use MM:SS.MS");
-        return;
+    let changeData: Partial<VideoTimeLineClip> = {}
+
+    if (type === "startTime") {
+      changeData = { startTime: seconds }
+    } else if (type === "cropStart") {
+      changeData = { clipedVideoStartTime: seconds }
+    } else if (type === "cropEnd") {
+      if (seconds <= selectedVideoClip.clipedVideoStartTime) {
+        toast.error("End time must be after start time")
+        return
       }
-      if (startTime < 0) {
-        toast.error("Start time cannot be negative");
-        return;
-      }
-      clipUpdate({ id: selectedVideoClip.id, changeData: { startTime } });
-      toast.success(`Start time updated to ${start}`);
-      return;
+      changeData = { clipedVideoEndTime: seconds }
     }
 
-    // Process end time
-    if (end) {
-      const endTime = deformatTime(end);
-      if (endTime === null) {
-        toast.error("Invalid end time format. Use MM:SS.MS");
-        return;
-      }
-      if (endTime <= selectedVideoClip.minTime + selectedVideoClip.startTime) {
-        toast.error("End time must be after start time");
-        return;
-      }
-      if (endTime > selectedVideoClip.maxTime + selectedVideoClip.startTime) {
-        toast.error(
-          `End time cannot exceed ${formatTime(selectedVideoClip.maxTime)}`
-        );
-        return;
-      }
-      clipUpdate({
-        id: selectedVideoClip.id,
-        changeData: { clipedVideoEndTime: endTime },
-      });
-      toast.success(`End time updated to ${end}`);
-      return;
-    }
-  };
-
-  function changePositionInTimeLine(
-    e: React.KeyboardEvent<HTMLInputElement>,
-    type: "position-start" | "position-end" | "crop-start" | "crop-end"
-  ) {
-    if (e.key === "Enter") {
-      if (!selectedVideoClip) {
-        toast.warning("Video clip not Selected.");
-        return;
-      }
-      if (type === "position-start") {
-        updateRenderVideoClip({
-          start: editableFildInput.clipedVideoStartTime,
-        });
-      } else if (type === "position-end") {
-        updateRenderVideoClip({ end: editableFildInput.clipedVideoEndTime });
-      } else if (type === "crop-start") {
-      } else if (type === "crop-end") {
-      }
-    }
+    clipUpdate({ id: selectedVideoClip.id, changeData })
+    toast.success("Time updated")
   }
 
   return (
-    <div className="p-1.5 px-1 space-y-4">
-      <div className=" flex items-center justify-between">
-        <div className="flex gap-4 items-center">
-          <ImFilm className=" text-red-400 w-4 h-4" />
-          <span className="font-bold text-base">{selectedVideoClip.name}</span>
+    <div className="flex flex-col h-full text-foreground border rounded-md">
+      <div className="p-4 space-y-6">
+        {/* Header Section */}
+        <div className="flex items-center justify-between group">
+          <div className="flex items-center gap-3">
+            <div
+              className="w-8 h-8 rounded-md flex items-center justify-center"
+              style={{ backgroundColor: selectedVideoClip.timeLineColor + "20" }}
+            >
+              <div className="w-3 h-3 rounded-full" style={{ backgroundColor: selectedVideoClip.timeLineColor }} />
+            </div>
+            <div>
+              <h2 className="text-sm font-medium leading-none truncate max-w-[140px]">{selectedVideoClip.name}</h2>
+              <p className="text-[10px] text-muted-foreground font-mono mt-1 line-clamp-1">
+                ID: {selectedVideoClip.id}
+              </p>
+            </div>
+          </div>
+          <Button variant="ghost" size="icon" asChild className="h-8 w-8 text-muted-foreground hover:text-foreground">
+            <a href={selectedVideoClip.url} target="_blank" rel="noopener noreferrer">
+              <ExternalLink className="h-4 w-4" />
+            </a>
+          </Button>
         </div>
-        <div className=" flex items-center gap-2">
-          <a
-            href={selectedVideoClip.url}
-            target="_blank"
-            className="hover:text-primary"
-            title="Open Orginal File in New tab"
+
+        <Separator className="bg-border/50" />
+
+        {/* General Settings */}
+        <div className="space-y-4">
+          <div className="grid gap-1.5">
+            <Label htmlFor="clip-name" className="text-[11px] uppercase tracking-wider text-muted-foreground font-bold">
+              Clip Name
+            </Label>
+            <div className="relative">
+              <Input
+                id="clip-name"
+                value={editableFields.name}
+                onChange={(e) => setEditableFields((prev) => ({ ...prev, name: e.target.value }))}
+                onKeyDown={(e) => e.key === "Enter" && handleNameUpdate()}
+                className="bg-muted/30 border-border/50 focus:border-primary/50 transition-colors h-9 pr-8"
+              />
+              <Pen className="absolute right-3 top-1/2 -translate-y-1/2 h-3.5 w-3.5 text-muted-foreground/50" />
+            </div>
+          </div>
+
+          <div className="grid gap-1.5">
+            <Label className="text-[11px] uppercase tracking-wider text-muted-foreground font-bold">
+              Timeline Color
+            </Label>
+            <div className="flex items-center gap-2 bg-muted/30 border border-border/50 rounded-md p-1.5">
+              <div className="relative w-8 h-8 border border-border/50 overflow-hidden shrink-0">
+                <input
+                  type="color"
+                  value={editableFields.color}
+                  onChange={(e) => handleColorUpdate(e.target.value)}
+                  className="absolute inset-0 w-[150%] h-[150%] -translate-x-1/4 -translate-y-1/4 cursor-pointer"
+                />
+              </div>
+              <code className="text-xs font-mono text-muted-foreground grow px-2 uppercase">
+                {editableFields.color}
+              </code>
+              <IoColorPalette className="h-4 w-4 text-muted-foreground/50 mr-1" />
+            </div>
+          </div>
+        </div>
+
+        <Separator className="bg-border/50" />
+
+        {/* Audio Section */}
+        <div className="space-y-3">
+          <Label className="text-[11px] uppercase tracking-wider text-muted-foreground font-bold">Audio Control</Label>
+          <Button
+            variant="secondary"
+            className="w-full justify-start gap-3 h-10 bg-muted/40 hover:bg-muted/60 border-border/50"
+            onClick={() => clipUpdate({ id: selectedVideoClip.id, changeData: { muted: !selectedVideoClip.muted } })}
           >
-            <CgArrowTopRight className=" w-6 h-6" />
-          </a>
+            {selectedVideoClip.muted ? (
+              <VolumeOff className="h-4 w-4 text-destructive" />
+            ) : (
+              <Volume2 className="h-4 w-4 text-primary" />
+            )}
+            <span className="text-sm font-medium">{selectedVideoClip.muted ? "Audio Muted" : "Audio Active"}</span>
+          </Button>
+        </div>
+
+        <Separator className="bg-border/50" />
+
+        {/* Timeline Position */}
+        <div className="space-y-4">
+          <div className="flex items-center gap-2">
+            <Clock className="h-3.5 w-3.5 text-primary" />
+            <span className="text-xs font-bold uppercase tracking-wider">Timeline Position</span>
+          </div>
+          <div className="grid gap-1.5">
+            <Label htmlFor="start-pos" className="text-[10px] text-muted-foreground">
+              Start Timestamp
+            </Label>
+            <div className="relative">
+              <Input
+                id="start-pos"
+                value={editableFields.startTime}
+                onChange={(e) => setEditableFields((prev) => ({ ...prev, startTime: e.target.value }))}
+                onKeyDown={(e) => e.key === "Enter" && handleTimeUpdate("startTime")}
+                className="bg-muted/30 border-border/50 h-9 font-mono text-xs"
+              />
+              <Badge
+                variant="outline"
+                className="absolute right-2 top-1/2 -translate-y-1/2 h-5 text-xs rounded-md bg-background"
+              >
+                MIN
+              </Badge>
+            </div>
+          </div>
+        </div>
+
+        <Separator className="bg-border/50" />
+
+        {/* Trimming/Cropping Section */}
+        <div className="space-y-4">
+          <div className="flex items-center gap-2">
+            <Crop className="h-3.5 w-3.5 text-primary" />
+            <span className="text-xs font-bold uppercase tracking-wider">Source Trimming</span>
+          </div>
+          <div className="grid grid-cols-2 gap-3">
+            <div className="grid gap-1.5">
+              <Label htmlFor="crop-start" className="text-[10px] text-muted-foreground">
+                In Point
+              </Label>
+              <Input
+                id="crop-start"
+                value={editableFields.cropStart}
+                onChange={(e) => setEditableFields((prev) => ({ ...prev, cropStart: e.target.value }))}
+                onKeyDown={(e) => e.key === "Enter" && handleTimeUpdate("cropStart")}
+                className="bg-muted/30 border-border/50 h-9 font-mono text-xs"
+              />
+            </div>
+            <div className="grid gap-1.5">
+              <Label htmlFor="crop-end" className="text-[10px] text-muted-foreground">
+                Out Point
+              </Label>
+              <Input
+                id="crop-end"
+                value={editableFields.cropEnd}
+                onChange={(e) => setEditableFields((prev) => ({ ...prev, cropEnd: e.target.value }))}
+                onKeyDown={(e) => e.key === "Enter" && handleTimeUpdate("cropEnd")}
+                className="bg-muted/30 border-border/50 h-9 font-mono text-xs"
+              />
+            </div>
+          </div>
+          <div className="flex items-center gap-2 p-2 bg-primary/5 border border-primary/10 rounded-md">
+            <Info className="h-3 w-3 text-primary shrink-0 mt-0.5" />
+            <p className="text-xs text-muted-foreground leading-tight">
+              Total source duration:{" "}
+              <span className="text-foreground font-mono">{formatTime(selectedVideoClip.maxTime)}</span>
+            </p>
+          </div>
         </div>
       </div>
 
-      <Separator />
-      {/* inside timeline */}
-      <div className=" space-y-2">
-        <div className=" font-bold flex gap-2 items-center">
-          <FcTimeline className=" w-4 h-4" />
-          Position Inside Timeline
+      {/* Footer Info */}
+      <div className="mt-auto p-4 bg-muted/20 border-t border-border/50">
+        <div className="flex items-center gap-2 text-[10px] text-muted-foreground uppercase tracking-widest font-bold">
+          <Hash className="h-3 w-3" />
+          Meta Information
         </div>
-        <div className=" grid grid-cols-2 gap-2">
-          <div className=" grid gap-2">
-            <span className=" text-white/50">Start From</span>
-            <InputGroup>
-              <InputGroupInput
-                defaultValue={formatTime(selectedVideoClip.startTime)}
-                onChange={(e) => {
-                  setEditableFildInput((pre) => {
-                    return { ...pre, clipedVideoStartTime: e.target.value };
-                  });
-                }}
-                onKeyDown={(e) => changePositionInTimeLine(e, "position-start")}
-              />
-              <InputGroupAddon align="inline-start">
-                <Clock />
-              </InputGroupAddon>
-              <InputGroupAddon align="inline-end">min</InputGroupAddon>
-            </InputGroup>
-          </div>
-        </div>
-      </div>
-      <Separator />
-      {/* croped video from orginal */}
-      <div className=" space-y-2">
-        <div className=" font-bold flex gap-2 items-center">
-          {" "}
-          <Crop className=" w-4 h-4" />
-          Croped Video from Orginal Video
-        </div>
-        <div className=" grid grid-cols-2 gap-2">
-          <div className=" grid gap-2">
-            <span className=" text-white/50">From</span>
-            <InputGroup>
-              <InputGroupInput
-                defaultValue={formatTime(
-                  selectedVideoClip.clipedVideoStartTime
-                )}
-                onChange={(e) => {
-                  setEditableFildInput((pre) => {
-                    return { ...pre, clipedVideoStartTime: e.target.value };
-                  });
-                }}
-              />
-              <InputGroupAddon align="inline-start">
-                <Clock />
-              </InputGroupAddon>
-              <InputGroupAddon align="inline-end">min</InputGroupAddon>
-            </InputGroup>
-          </div>
-
-          <div className=" grid gap-2">
-            <span className=" text-white/50">To</span>
-            <InputGroup>
-              <InputGroupInput
-                defaultValue={formatTime(
-                  selectedVideoClip.clipedVideoEndTime +
-                    selectedVideoClip.startTime
-                )}
-                onChange={(e) => {
-                  setEditableFildInput((pre) => {
-                    return { ...pre, clipedVideoEndTime: e.target.value };
-                  });
-                }}
-                onKeyDown={(e) => changePositionInTimeLine(e, "position-end")}
-              />
-              <InputGroupAddon align="inline-start">
-                <Clock />
-              </InputGroupAddon>
-              <InputGroupAddon align="inline-end">min</InputGroupAddon>
-            </InputGroup>
-          </div>
-        </div>
-      </div>
-      <Separator />
-      <div className=" space-y-2">
-        <div className="flex justify-between items-center gap-1">
-          <span className="font-bold">Selected Video</span>
-          <span className=" text-white/20 text-xs line-clamp-1">
-            {"ID : " + selectedVideoClip.id}
-          </span>
-        </div>
-        <div className=" grid gap-2">
-          <div className=" grid gap-2">
-            <span className=" text-white/50">Name</span>
-            <InputGroup>
-              <InputGroupInput
-                defaultValue={editableFildInput.name}
-                onChange={(e) => {
-                  setEditableFildInput((pre) => {
-                    return { ...pre, name: e.target.value };
-                  });
-                }}
-                onKeyDown={(e) => changeName(e)}
-              />
-              <InputGroupAddon align="inline-start">
-                <Pen />
-              </InputGroupAddon>
-              {selectedVideoClip.name !== editableFildInput.name ? (
-                <InputGroupAddon
-                  title="Enter to save new name"
-                  align="inline-end"
-                >
-                  <div className=" w-2 h-2 bg-green-400 rounded-full animate-pulse" />
-                </InputGroupAddon>
-              ) : null}
-            </InputGroup>
-          </div>
-          <div className=" grid gap-2">
-            <span className=" text-white/50">Clip Color</span>
-            <InputGroup>
-              <InputGroupInput
-                className=" transition-all"
-                type="color"
-                value={editableFildInput.color}
-                onChange={(e) => {
-                  changeClipColor(e.target.value);
-                }}
-              />
-              <InputGroupAddon align="inline-start">
-                <IoColorPalette />
-              </InputGroupAddon>
-              <InputGroupAddon align="inline-end">
-                {selectedVideoClip.timeLineColor}
-              </InputGroupAddon>
-            </InputGroup>
-          </div>
-          <div className=" grid gap-2">
-            <span className=" text-white/50">Orginal Video Length</span>
-            <InputGroup>
-              <InputGroupInput
-                disabled
-                value={formatTime(selectedVideoClip.maxTime)}
-              />
-              <InputGroupAddon align="inline-start">
-                <Clock />
-              </InputGroupAddon>
-              <InputGroupAddon align="inline-end">min</InputGroupAddon>
-            </InputGroup>
-          </div>
+        <div className="mt-2 grid grid-cols-2 gap-y-1 text-[10px]">
+          <span className="text-muted-foreground">Format</span>
+          <span className="text-foreground text-right">{selectedVideoClip.type}</span>
         </div>
       </div>
     </div>
