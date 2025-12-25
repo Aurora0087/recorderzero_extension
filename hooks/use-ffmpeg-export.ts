@@ -51,262 +51,179 @@ export function useFFmpegExport() {
     }
   }, []);
 
-  const exportWithFFmpeg = useCallback(
-    async ({
-      exportType,
-      editerState,
-    }: {
-      exportType: "mp4" | "gif" | "webm";
-      editerState: VideoEditorState;
-    }) => {
-      try {
-        setError(null);
-        setExportFileUrl(null);
-        setProgress(0);
-        setIsExporting(true);
+const exportWithFFmpeg = useCallback(
+  async ({
+    exportType,
+    editerState,
+  }: {
+    exportType: "mp4" | "gif" | "webm";
+    editerState: VideoEditorState;
+  }) => {
+    try {
+      setError(null);
+      setExportFileUrl(null);
+      setProgress(0);
+      setIsExporting(true);
 
-        setFFmpegMessage(["****Starting Exporing File Prosses.****"]);
+      if (!ffmpegRef.current) await loadFFmpeg();
+      const ffmpeg = ffmpegRef.current!;
 
-        // --- 1. Initialize FFmpeg ---
-        if (!ffmpegRef.current) {
-          await loadFFmpeg();
-          // specific check if load failed
-          if (!ffmpegRef.current)
-            throw new Error("Could not initialize FFmpeg");
-        }
+      const outputW = 1920;
+      const outputH = 1080;
+      const outputName = `output.${exportType}`;
+      const padding = editerState.padding || 0;
 
-        const outputH = 1080;
-        const outputW = 1920;
 
-        let inputs: string[] = [];
-        const maskImageName = "maskImageName.png";
-        let filterChain = "";
+      // Calculate safe inner dimensions based on padding
+      const innerW = outputW - editerState.padding * 2;
+      const innerH = outputH - editerState.padding * 2;
 
-        setFFmpegMessage((pre) => [
-          ...pre,
-          "****FFmpeg Loaded successfully.****",
-        ]);
+      // 1. Calculate Total Project Duration
+      const totalDuration = editerState.clipEnd-editerState.clipStart;
 
-        const ffmpeg = ffmpegRef.current;
+      if (totalDuration <= 0) throw new Error("Invalid clip range selected.");
 
-        // --- 2. Input Validation & Setup ---
-        if (!editerState.videos || editerState.videos.length === 0) {
-          throw new Error("No videos found in state");
-        }
-        setFFmpegMessage((pre) => [...pre, `**** Finding Edits.****`]);
+      // 2. Prepare Background
+      const bgImageName = "bg_layer.png";
+      const bgBlob = editerState.backgroundGradient.enabled
+        ? await createGradientBlob(outputW, outputH, editerState.backgroundGradient.stops, editerState.backgroundGradient.angle)
+        : await createColorImageBlob(outputW, outputH, editerState.backgroundColor);
+      await ffmpeg.writeFile(bgImageName, await fetchFile(bgBlob));
 
-        const video = editerState.videos[0];
-        const inputName = video.name;
-        const outputName = `output.${exportType}`;
-        const bgImageName = "bg_image.png";
+      // 3. Setup Inputs
+      const inputs: string[] = [
+        "-loop", "1", "-i", bgImageName];
+      const filterParts: string[] = [];
+      let lastOverlayLabel = "[0:v]"; // Start with the background
 
-        // --- 3. Get Video Dimensions ---
-        // We need original dimensions to calculate the padded size
-        setFFmpegMessage((pre) => [
-          ...pre,
-          "**** Calculating Dimensions... ****",
-        ]);
+      for (let i = 0; i < editerState.videos.length; i++) {
+         const video = editerState.videos[i];
+        
+        // Timing logic (same as your current logic)
+        const clipDuration = video.clipedVideoEndTime - video.clipedVideoStartTime;
+        const timelineStart = video.startTime;
+        const timelineEnd = video.startTime + clipDuration;
+        const renderStart = Math.max(timelineStart, editerState.clipStart);
+        const renderEnd = Math.min(timelineEnd, editerState.clipEnd);
+
+        if (renderStart >= renderEnd) continue;
+
+        const offsetInClip = renderStart - timelineStart;
+        const actualSourceStart = video.clipedVideoStartTime + offsetInClip;
+        const actualSourceDuration = renderEnd - renderStart;
+        const relativeStartTime = renderStart - editerState.clipStart;
+
+        // --- DYNAMIC PADDING CALCULATION (Per Clip) ---
         const { w: videoW, h: videoH } = await getVideoDimensions(video.url);
+        
+        // This matches your MainPreview logic: 
+        // We scale the video so that (Video + Padding) fits the 1920x1080 area
+        const scaleFactor = outputW / (outputW + 2 * padding);
+        
+        const scaledVideoW = Math.round(videoW * scaleFactor);
+        const scaledVideoH = Math.round(videoH * scaleFactor);
 
-        const padding = editerState.padding || 0;
-        let extraPW = padding;
-        let extraPH = padding;
-        let totalH = videoH + padding * 2;
-        let totalW = videoW + padding * 2;
+        
+        // If it's a vertical video or has a different aspect ratio, 
+        // we ensure the X and Y offsets keep it perfectly centered 
+        // within the 1920x1080 background.
+        const xOffset = (outputW - scaledVideoW) / 2;
+        const yOffset = (outputH - scaledVideoH) / 2;
 
-        if (outputH < outputW) {
-          if (videoW < videoH) {
-            extraPW =
-              (((videoH + 2 * padding) * outputW) / outputH - videoW) * 0.5;
-            setFFmpegMessage((pre) => [
-              ...pre,
-              `****Left padding ${extraPW}.****`,
-            ]);
-            totalW = videoW + extraPW * 2;
-          } else {
-            extraPH =
-              (((videoW + 2 * padding) * outputH) / outputW - videoH) * 0.5;
-            setFFmpegMessage((pre) => [
-              ...pre,
-              `****Top padding ${extraPH}.****`,
-            ]);
-            totalH = videoH + extraPH * 2;
-          }
-        }
+        // Create a specific mask for THIS video's dimensions
+        const maskName = `mask_${i}.png`;
+        const maskBlob = await createRoundedMaskBlob({
+          width: scaledVideoW,
+          height: scaledVideoH,
+          radius: editerState.borderRadius * scaleFactor,
+        });
+        await ffmpeg.writeFile(maskName, await fetchFile(maskBlob));
 
-        // --- 4. Write Main Video File ---
-        const fileData = await fetchFile(video.url);
-        setFFmpegMessage((pre) => [
-          ...pre,
-          `****Fetching ${video.name}'s File data.****`,
-        ]);
-        await ffmpeg.writeFile(inputName, fileData);
-        setFFmpegMessage((pre) => [
-          ...pre,
-          `****Writeing  ${video.name}'s file data in FFmpeg Sueessfull.****`,
-        ]);
+        const vFileName = `input_${i}.mp4`;
+        await ffmpeg.writeFile(vFileName, await fetchFile(video.url));
+        
+        // Add Video Input and mask
+        inputs.push("-ss", `${actualSourceStart}`, "-t", `${actualSourceDuration}`, "-i", vFileName);
+        inputs.push("-i", maskName);
 
-        // --- 5. Prepare FFmpeg Command Arguments ---
-        let ffmpegArgs: string[] = [];
+        // Get the current input index for this video
+        const videoInputIdx = inputs.filter(arg => arg === "-i").length - 2;
+        const maskInputIdx = inputs.filter(arg => arg === "-i").length - 1;
+        
+        const scaledLabel = `[v${i}_scaled]`;
+        const maskedLabel = `[v${i}_masked]`;
+        const outLabel = `[over_${i}]`;
 
-        let bgBlob;
+        /**
+         * UPDATED FILTER:
+         * 1. Scale and pad to match inner area
+         * 2. Set pixel format to yuv420p for compatibility
+         * 3. Merge with looped mask (Input 1)
+         * 4. Overlay onto background with 'enable' for timeline placement
+         */
+        filterParts.push(
+          `[${videoInputIdx}:v]scale=${scaledVideoW}:${scaledVideoH},format=rgba${scaledLabel}`
+        );
+        filterParts.push(
+          `${scaledLabel}[${maskInputIdx}:v]alphamerge${maskedLabel}`
+        );
+        filterParts.push(
+          `${lastOverlayLabel}${maskedLabel}overlay=${xOffset}:${yOffset}:enable='between(t,${relativeStartTime},${relativeStartTime + actualSourceDuration})'${outLabel}`
+        );
 
-        // is gradiend bg using
-        if (editerState.backgroundGradient.enabled) {
-          setFFmpegMessage((pre) => [
-            ...pre,
-            "**** Generating Gradient Image ****",
-          ]);
-
-          // 1. Generate Gradient Blob via Canvas
-          bgBlob = await createGradientBlob(
-            totalW,
-            totalH,
-            editerState.backgroundGradient.stops,
-            editerState.backgroundGradient.angle
-          );
-
-          setFFmpegMessage((pre) => [
-            ...pre,
-            `**** Generating Gradient Image Completed ****`,
-          ]);
-        } else {
-          setFFmpegMessage((pre) => [
-            ...pre,
-            "**** Generating Solid Color Image ****",
-          ]);
-
-          bgBlob = await createColorImageBlob(
-            totalW,
-            totalH,
-            editerState.backgroundColor
-          );
-          setFFmpegMessage((pre) => [
-            ...pre,
-            `**** Generating Solid Color Image Completed ****`,
-          ]);
-        }
-
-        // Write Background to FFmpeg
-        await ffmpeg.writeFile(bgImageName, await fetchFile(bgBlob));
-
-        setFFmpegMessage((pre) => [
-            ...pre,
-            `**** Bg Add in FFmpeg ****`,
-          ]);
-
-        const maskBlob = await createRoundedMaskBlob(
-            {width:videoW,height:videoH,radius:editerState.borderRadius}
-          );
-        await ffmpeg.writeFile(maskImageName, await fetchFile(maskBlob));
-
-        setFFmpegMessage((pre) => [
-            ...pre,
-            `**** Video mask Add in FFmpeg ****`,
-          ]);
-
-        inputs = ["-i", inputName, "-i", bgImageName, "-i", maskImageName];
-
-        // A. Apply Mask to Video
-        // [0:v][2:v]alphamerge -> takes video and mask, merges them into [masked_video]
-        filterChain += `[0:v][2:v]alphamerge[masked_video];`;
-
-        // B. Overlay Masked Video onto Background
-        // [1:v][masked_video]overlay...
-        filterChain += `[1:v][masked_video]overlay=x=${extraPW}:y=${extraPH}`;
-
-        // setsar=1 ensures the pixel aspect ratio is square (important for players)
-        filterChain += `,scale=${outputW}:${outputH}:flags=lanczos,setsar=1`;
-
-        // --- SPECIAL HANDLING FOR GIF ---
-        if (exportType === "gif") {
-          // GIFs need fps reduction to keep file size reasonable
-          filterChain += `,fps=10`;
-          // Note: splitting palettegen/paletteuse is better for quality,
-          // but for a single command, we stick to basic filtering.
-        }
-
-        // --- CONSTRUCT FINAL ARGUMENTS ---
-        ffmpegArgs = [
-          ...inputs,
-          "-filter_complex",
-          filterChain, // We use filter_complex for both cases now, it's safer
-        ];
-
-        // --- ENCODING FLAGS ---
-        if (exportType === "gif") {
-          ffmpegArgs.push("-f", "gif", "-loop", "0");
-        } else {
-          ffmpegArgs.push(
-            "-c:v",
-            "libx264",
-            "-preset",
-            "ultrafast",
-            "-pix_fmt",
-            "yuv420p"
-          );
-        }
-
-        // output file
-        ffmpegArgs.push(outputName);
-
-        // --- 7. Execute ---
-        setFFmpegMessage((pre) => [...pre, `**** Executing FFmpeg... ****`]);
-        console.log("Command:", ffmpegArgs);
-
-        await ffmpeg.exec(ffmpegArgs);
-
-        setFFmpegMessage((pre) => [
-          ...pre,
-          `****Reading output file data.****`,
-        ]);
-        // --- 8. Read & Download ---
-        const data = await ffmpeg.readFile(outputName);
-
-        // Create Download
-        const mimeType =
-          exportType === "gif" ? "image/gif" : `video/${exportType}`;
-        setFFmpegMessage((pre) => [
-          ...pre,
-          `****readying File for download.****`,
-        ]);
-
-        const blob = new Blob([data as any], { type: mimeType });
-        const url = URL.createObjectURL(blob);
-
-        setExportFileUrl(url);
-
-        // Auto Download
-        const a = document.createElement("a");
-        a.href = url;
-        a.download = `video-${Date.now()}.${exportType}`;
-        document.body.appendChild(a);
-        a.click();
-
-        // Cleanup DOM
-        setTimeout(() => {
-          document.body.removeChild(a);
-          // URL.revokeObjectURL(url);
-        }, 100);
-
-        // Cleanup FFmpeg FS
-        try {
-          await ffmpeg.deleteFile(inputName);
-          await ffmpeg.deleteFile(outputName);
-        } catch (e) {
-          console.warn("Cleanup warning:", e);
-        }
-
-        setProgress(100);
-      } catch (err) {
-        console.error("Export Critical Error:", err);
-        setError(err instanceof Error ? err.message : "Unknown error");
-      } finally {
-        setIsExporting(false);
+        lastOverlayLabel = outLabel;
       }
-    },
-    [loadFFmpeg]
-  );
+
+      // Join filters with semicolons, ensuring no trailing semicolon
+      const filterComplex = filterParts.join(";");
+
+      const ffmpegArgs = [
+        ...inputs,
+        "-filter_complex", filterComplex,
+        "-map", lastOverlayLabel, // The final combined stream
+        "-t", `${totalDuration}`,  // Stop at the work area end
+        "-shortest",               // Important: cut off the infinite loops (bg/mask)
+      ];
+
+      if (exportType === "gif") {
+        ffmpegArgs.push("-f", "gif", "-loop", "0", outputName);
+      } else {
+        ffmpegArgs.push(
+          "-c:v", "libx264",
+          "-preset", "ultrafast",
+          "-pix_fmt", "yuv420p",
+          "-c:a", "aac",
+          outputName
+        );
+      }
+
+      setFFmpegMessage((pre) => [...pre, `**** Running Final Render... ****`]);
+      await ffmpeg.exec(ffmpegArgs);
+
+      // 4. Cleanup and Download
+      const data = await ffmpeg.readFile(outputName);
+      const blob = new Blob([data as any], { type: exportType === "gif" ? "image/gif" : "video/mp4" });
+      const url = URL.createObjectURL(blob);
+      setExportFileUrl(url);
+
+      const a = document.createElement("a");
+      a.href = url;
+      a.download = `render-${Date.now()}.${exportType}`;
+      a.click();
+
+      // Clean up VFS to save memory
+      for (let i = 0; i < editerState.videos.length; i++) {
+        await ffmpeg.deleteFile(`input_${i}.mp4`);
+      }
+      await ffmpeg.deleteFile(bgImageName);
+
+    } catch (err) {
+      console.error("Export Error:", err);
+      setError(err instanceof Error ? err.message : "Export failed");
+    } finally {
+      setIsExporting(false);
+    }
+  }, [loadFFmpeg]);
 
   return {
     initFFmpeg: loadFFmpeg,
