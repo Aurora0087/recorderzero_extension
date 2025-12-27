@@ -45,12 +45,13 @@ export interface VideoEditorFileProps {
 export interface VideoEditorState {
   clipStart: number;
   clipEnd: number;
+  bgType:"COLOR"|"GRADIENT"|"IMAGE";
   backgroundColor: string;
   backgroundGradient: {
-    enabled: boolean;
     stops: { color: string; position: number }[];
     angle: number;
   };
+  bgImageUrl:string;
   videos: VideoTimeLineClip[];
   audios:AudioTimeLine[];
   importedFiles: VideoEditorFileProps[];
@@ -88,15 +89,16 @@ export function useVideoEditor() {
   const [state, setState] = useState<VideoEditorState>({
     clipStart: 0,
     clipEnd: 0,
-    backgroundColor: "#1a1a1a",
+    bgType:"COLOR",
+    backgroundColor: "#FF5555",
     backgroundGradient: {
-      enabled: false,
       stops: [
         { color: "#000000", position: 0 },
         { color: "#1a1a1a", position: 100 },
       ],
       angle: 45,
     },
+    bgImageUrl:"",
     zoompans: [],
     videos: [],
     audios:[],
@@ -106,8 +108,6 @@ export function useVideoEditor() {
     transition: "none",
     transitionDuration: 0.5,
   });
-
-  const [isProcessing, setIsProcessing] = useState(false);
 
   const updateClip = useCallback((start: number, end: number) => {
     setState((prev) => ({
@@ -130,6 +130,13 @@ export function useVideoEditor() {
     },
     []
   );
+
+  const updateBgType = useCallback((BGType:"COLOR"|"GRADIENT"|"IMAGE")=>{
+    setState((prev)=>({
+      ...prev,
+      bgType:BGType
+    }));
+  },[])
 
   const updatePadding = useCallback((padding: number) => {
     setState((prev) => ({
@@ -264,6 +271,7 @@ export function useVideoEditor() {
   return {
     state,
     updateClip,
+    updateBgType,
     updateBackground,
     updateGradient,
     updatePadding,
@@ -274,6 +282,5 @@ export function useVideoEditor() {
     addVideo,
     deleteVideo,
     addimportedFiles,
-    isProcessing,
   };
 }

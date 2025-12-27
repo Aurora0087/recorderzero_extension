@@ -15,6 +15,7 @@ export function useFFmpegExport() {
   const [error, setError] = useState<string | null>(null);
   const isLoadingRef = useRef(false);
   const [exportFileUrl, setExportFileUrl] = useState<string | null>(null);
+  const [isProcessing, setIsProcessing] = useState(false);
 
   const loadFFmpeg = useCallback(async () => {
     if (ffmpegRef.current || isLoadingRef.current) return;
@@ -64,7 +65,9 @@ const exportWithFFmpeg = useCallback(
       setExportFileUrl(null);
       setProgress(0);
       setIsExporting(true);
+      setIsProcessing(true);
 
+      // load ffmpeg
       if (!ffmpegRef.current) await loadFFmpeg();
       const ffmpeg = ffmpegRef.current!;
 
@@ -73,11 +76,6 @@ const exportWithFFmpeg = useCallback(
       const outputName = `output.${exportType}`;
       const padding = editerState.padding || 0;
 
-
-      // Calculate safe inner dimensions based on padding
-      const innerW = outputW - editerState.padding * 2;
-      const innerH = outputH - editerState.padding * 2;
-
       // 1. Calculate Total Project Duration
       const totalDuration = editerState.clipEnd-editerState.clipStart;
 
@@ -85,9 +83,10 @@ const exportWithFFmpeg = useCallback(
 
       // 2. Prepare Background
       const bgImageName = "bg_layer.png";
-      const bgBlob = editerState.backgroundGradient.enabled
-        ? await createGradientBlob(outputW, outputH, editerState.backgroundGradient.stops, editerState.backgroundGradient.angle)
-        : await createColorImageBlob(outputW, outputH, editerState.backgroundColor);
+      const bgBlob = editerState.bgType==="GRADIENT"
+        ? await createBackgroundBlob(outputW, outputH, {type:"GRADIENT",gradient:{stops:editerState.backgroundGradient.stops, angle:editerState.backgroundGradient.angle}})
+        :editerState.bgType==="COLOR"? await createBackgroundBlob(outputW, outputH, {type:"COLOR",color:editerState.backgroundColor})
+        :await createBackgroundBlob(outputW, outputH, {type:"IMAGE",imageUrl:editerState.bgImageUrl});
       await ffmpeg.writeFile(bgImageName, await fetchFile(bgBlob));
 
       // 3. Setup Inputs
@@ -155,11 +154,7 @@ const exportWithFFmpeg = useCallback(
         const outLabel = `[over_${i}]`;
 
         /**
-         * UPDATED FILTER:
-         * 1. Scale and pad to match inner area
-         * 2. Set pixel format to yuv420p for compatibility
-         * 3. Merge with looped mask (Input 1)
-         * 4. Overlay onto background with 'enable' for timeline placement
+         * UPDATED FILTER
          */
         filterParts.push(
           `[${videoInputIdx}:v]scale=${scaledVideoW}:${scaledVideoH},format=rgba${scaledLabel}`
@@ -211,6 +206,8 @@ const exportWithFFmpeg = useCallback(
       a.download = `render-${Date.now()}.${exportType}`;
       a.click();
 
+      setExportFileUrl(url);
+
       // Clean up VFS to save memory
       for (let i = 0; i < editerState.videos.length; i++) {
         await ffmpeg.deleteFile(`input_${i}.mp4`);
@@ -222,6 +219,7 @@ const exportWithFFmpeg = useCallback(
       setError(err instanceof Error ? err.message : "Export failed");
     } finally {
       setIsExporting(false);
+      setIsProcessing(false);
     }
   }, [loadFFmpeg]);
 
@@ -233,6 +231,7 @@ const exportWithFFmpeg = useCallback(
     error,
     ffmpegMessage,
     exportFileUrl,
+    isProcessing,
   };
 }
 
@@ -249,72 +248,77 @@ const getVideoDimensions = (url: string): Promise<{ w: number; h: number }> => {
   });
 };
 
-// Helper 2: Create a Gradient Image Blob using HTML Canvas
-const createGradientBlob = async (
+interface BackgroundConfig {
+  type: "COLOR" | "GRADIENT" | "IMAGE";
+  color?: string;
+  gradient?: {
+    stops: { color: string; position: number }[];
+    angle: number;
+  };
+  imageUrl?: string;
+}
+
+const createBackgroundBlob = async (
   width: number,
   height: number,
-  stops: { color: string; position: number }[],
-  angle: number
+  config: BackgroundConfig
 ): Promise<Blob> => {
   const canvas = document.createElement("canvas");
   canvas.width = width;
   canvas.height = height;
-
-  const centerX = canvas.width / 2;
-  const centerY = canvas.height / 2;
-  const length = Math.max(canvas.width, canvas.height);
   const ctx = canvas.getContext("2d");
   if (!ctx) throw new Error("Canvas context failed");
 
-  // Convert CSS angle to Canvas Gradient coordinates (Simple approximation)
-  // For precise CSS matching, complex trigonometry is needed,
-  // but this covers standard diagonal/vertical/horizontal well.
-  const angleRad = ((angle - 90) * Math.PI) / 180;
+  const { type, color, gradient, imageUrl } = config;
 
-  const x2 = centerX + (Math.cos(angleRad) * length) / 2;
-  const y2 = centerY + (Math.sin(angleRad) * length) / 2;
-  const x1 = centerX - (Math.cos(angleRad) * length) / 2;
-  const y1 = centerY - (Math.sin(angleRad) * length) / 2;
+  if (type === "COLOR") {
+    // --- 1. SOLID COLOR LOGIC ---
+    ctx.fillStyle = color || "#000000";
+    ctx.fillRect(0, 0, width, height);
 
-  const gradient = ctx.createLinearGradient(x1, y1, x2, y2);
+  } else if (type === "GRADIENT" && gradient) {
+    // --- 2. GRADIENT LOGIC ---
+    const centerX = width / 2;
+    const centerY = height / 2;
+    const length = Math.max(width, height);
+    const angleRad = ((gradient.angle - 90) * Math.PI) / 180;
 
-  // Add color stops (sorted by position)
-  stops
-    .sort((a, b) => a.position - b.position)
-    .forEach((stop) => {
-      gradient.addColorStop(stop.position / 100, stop.color);
+    const x2 = centerX + (Math.cos(angleRad) * length) / 2;
+    const y2 = centerY + (Math.sin(angleRad) * length) / 2;
+    const x1 = centerX - (Math.cos(angleRad) * length) / 2;
+    const y1 = centerY - (Math.sin(angleRad) * length) / 2;
+
+    const canvasGradient = ctx.createLinearGradient(x1, y1, x2, y2);
+    [...gradient.stops]
+      .sort((a, b) => a.position - b.position)
+      .forEach((stop) => {
+        canvasGradient.addColorStop(stop.position / 100, stop.color);
+      });
+
+    ctx.fillStyle = canvasGradient;
+    ctx.fillRect(0, 0, width, height);
+
+  } else if (type === "IMAGE" && imageUrl) {
+    // --- 3. IMAGE LOGIC ---
+    const img = new Image();
+    // Enable cross-origin for external URLs (needed for canvas.toBlob)
+    img.crossOrigin = "anonymous"; 
+    img.src = imageUrl;
+
+    await new Promise((resolve, reject) => {
+      img.onload = resolve;
+      img.onerror = () => reject(new Error("Failed to load background image"));
     });
 
-  ctx.fillStyle = gradient;
-  ctx.fillRect(0, 0, width, height);
+    // Draw image to fill the canvas dimensions
+    ctx.drawImage(img, 0, 0, width, height);
+  }
 
+  // Final Step: Convert Canvas to Blob
   return new Promise((resolve, reject) => {
     canvas.toBlob((blob) => {
       if (blob) resolve(blob);
-      else reject(new Error("Canvas blob failed"));
-    }, "image/png");
-  });
-};
-
-//
-const createColorImageBlob = async (
-  width: number,
-  height: number,
-  color: string
-): Promise<Blob> => {
-  const canvas = document.createElement("canvas");
-  canvas.width = width;
-  canvas.height = height;
-  const ctx = canvas.getContext("2d");
-  if (!ctx) throw new Error("Canvas context failed");
-
-  ctx.fillStyle = color || "#000000";
-  ctx.fillRect(0, 0, width, height);
-
-  return new Promise((resolve, reject) => {
-    canvas.toBlob((blob) => {
-      if (blob) resolve(blob);
-      else reject(new Error("Canvas blob failed"));
+      else reject(new Error("Canvas blob conversion failed"));
     }, "image/png");
   });
 };

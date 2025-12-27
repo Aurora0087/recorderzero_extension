@@ -18,10 +18,11 @@ interface MainPreviewProps {
   clipEnd: number;
   backgroundColor: string;
   backgroundGradient: {
-    enabled: boolean;
     stops: { color: string; position: number }[];
     angle: number;
   };
+  bgType: "COLOR" | "GRADIENT" | "IMAGE";
+  bgImageUrl: string;
   padding: number;
   borderRadius: number;
   transition: string;
@@ -45,6 +46,8 @@ export default function MainPreview({
   onSeek,
   videoRefs,
   togglePlay,
+  bgType,
+  bgImageUrl,
 }: MainPreviewProps) {
   const containerRef = useRef<HTMLDivElement>(null);
   const canvasRef = useRef<HTMLCanvasElement>(null);
@@ -54,8 +57,21 @@ export default function MainPreview({
   const [activeRadiusing, setActiveRadiusing] = useState(0);
   const videoRapperRef = useRef<HTMLDivElement>(null);
 
+  const bgImgRef = useRef<HTMLImageElement | null>(null);
+
   const CANVAS_WIDTH = 1920;
   const CANVAS_HEIGHT = 1080;
+
+  useEffect(() => {
+    if (bgType === "IMAGE" && bgImageUrl) {
+      const img = new Image();
+      img.src = bgImageUrl; // if bgImageUrl is a string
+      img.onload = () => {
+        bgImgRef.current = img;
+        renderFrame(); // Re-render once image is ready
+      };
+    }
+  }, [bgImageUrl, bgType]);
 
   const renderFrame = useCallback(() => {
     const canvas = canvasRef.current;
@@ -68,7 +84,7 @@ export default function MainPreview({
     ctx.clearRect(0, 0, canvas.width, canvas.height);
 
     // 2. Draw Background
-    if (backgroundGradient.enabled) {
+    if (bgType === "GRADIENT") {
       try {
         // Converting angle to radians ***(0° = right, 90° = down, 180° = left, 270° = up)***
         const angleRad = ((backgroundGradient.angle - 90) * Math.PI) / 180;
@@ -93,15 +109,20 @@ export default function MainPreview({
           });
 
         ctx.fillStyle = gradient;
+        ctx.fillRect(0, 0, canvas.width, canvas.height);
       } catch (e) {
         // Fallback if color parsing fails
         ctx.fillStyle = backgroundColor || "#000000";
+        ctx.fillRect(0, 0, canvas.width, canvas.height);
       }
-    } else {
+    } else if (bgType === "COLOR") {
       ctx.fillStyle = backgroundColor || "#000000";
+      ctx.fillRect(0, 0, canvas.width, canvas.height);
+    } else if (bgType === "IMAGE" && bgImgRef.current) {
+      // Scale image to cover the 1920x1080 canvas
+      const img = bgImgRef.current;
+      ctx.drawImage(img, 0, 0, canvas.width, canvas.height);
     }
-
-    ctx.fillRect(0, 0, canvas.width, canvas.height);
 
     const canvasWrapperW = canvasWrapper.current?.offsetWidth || 1;
     const canvasWrapperH = canvasWrapper.current?.offsetHeight || 1;
@@ -118,17 +139,32 @@ export default function MainPreview({
       0.5;
     setActivePaddingY(extraPH * scaleFactorW);
     setActiveRadiusing(borderRadius * scaleFactorW);
-  }, [backgroundColor, backgroundGradient, padding, borderRadius,videos]);
+  }, [
+    backgroundColor,
+    backgroundGradient,
+    bgType,
+    padding,
+    borderRadius,
+    videos,
+  ]);
 
   // Main Effect: Set up listeners
   useEffect(() => {
     renderFrame();
-  }, [videoRefs,videos]);
+  }, [videoRefs, videos]);
 
   // Effect: Re-render when style props change
   useEffect(() => {
     requestAnimationFrame(renderFrame);
-  }, [currentTime, padding, borderRadius, backgroundColor, backgroundGradient,videos]);
+  }, [
+    currentTime,
+    padding,
+    borderRadius,
+    backgroundColor,
+    backgroundGradient,
+    bgType,
+    videos,
+  ]);
 
   return (
     <div className="flex-1 flex flex-col items-center justify-center bg-card overflow-hidden rounded-md border p-2">
@@ -172,8 +208,9 @@ export default function MainPreview({
                         }
                       }}
                       muted={v.muted}
-                      onTimeUpdate={()=>onTimeUpdateHandel({vid:v.id})}
-                      onEnded={()=>{console.log("VideoEnd.");
+                      onTimeUpdate={() => onTimeUpdateHandel({ vid: v.id })}
+                      onEnded={() => {
+                        console.log("VideoEnd.");
                       }}
                       src={v.url}
                       controls={false}

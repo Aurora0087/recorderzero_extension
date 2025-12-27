@@ -50,6 +50,7 @@ export default function EditerPage({
     updateClip,
     updateBackground,
     updateGradient,
+    updateBgType,
     updatePadding,
     updateBorderRadius,
     updateTransition,
@@ -58,7 +59,6 @@ export default function EditerPage({
     updateVideos,
     deleteVideo,
     addimportedFiles,
-    isProcessing,
   } = useVideoEditor();
 
   const {
@@ -69,15 +69,8 @@ export default function EditerPage({
     isReady,
     ffmpegMessage,
     exportFileUrl,
+    isProcessing,
   } = useFFmpegExport();
-
-  function pushSingleVideoClip(vid: string) {
-    const video = videoRefs.current.get(vid);
-    if (!video) {
-      return;
-    }
-    video.pause();
-  }
 
   const noVideoArea = ({ nextTime }: { nextTime: number }) => {
     console.log(nextTime);
@@ -341,6 +334,9 @@ export default function EditerPage({
     );
   }
 
+  console.log(state.bgType);
+  
+
   return (
     <main className="h-screen flex flex-col select-none overflow-hidden bg-background text-foreground">
       {/* Main Content Workspace */}
@@ -373,6 +369,8 @@ export default function EditerPage({
               videoRefs={videoRefs}
               isPlaying={isPlaying}
               setIsPlaying={setIsPlaying}
+              bgType={state.bgType}
+              bgImageUrl={state.bgImageUrl}
               videos={state.videos}
               onLoadedMetadata={handleLoadedMetadata}
               onTimeUpdateHandel={handleTimeUpdate}
@@ -416,12 +414,13 @@ export default function EditerPage({
 
         {/* Right Media Panel - Fixed Width */}
         <RightMediaPanel
+        progress={progress}
+        exportFileUrl={exportFileUrl}
+        updateBgType={updateBgType}
           selectedVideoId={selectedVideoClipId}
           clipUpdate={updateVideos}
           isProcessing={isProcessing}
           onExport={handleExportClick}
-          mediaFiles={[]}
-          onMediaSelect={(file) => handleVideoUpload(file)}
           onUpdateBackground={updateBackground}
           onUpdateGradient={updateGradient}
           onUpdatePadding={updatePadding}
@@ -462,7 +461,7 @@ export default function EditerPage({
               <div>
                 <p>Progress</p>
                 <div className="flex gap-2 items-center justify-between">
-                  <Progress value={progress} className=" h-1" />
+                  <Progress value={progress} className=" h-1 rounded-none" />
                   <span>{progress}%</span>
                 </div>
               </div>
@@ -502,6 +501,7 @@ export default function EditerPage({
               {exportFileUrl && (
                 <a
                   href={exportFileUrl}
+                  target="_blank"
                   className=" rounded-md bg-primary px-4 py-2 flex items-center justify-center gap-2 hover:bg-primary/50 text-primary-foreground"
                 >
                   <Download className=" w-4 h-4" />

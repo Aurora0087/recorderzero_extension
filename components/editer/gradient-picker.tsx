@@ -198,15 +198,16 @@ const PRESET_GRADIENTS: Gradient[] = [
 export function GradientPicker({
   gradientColor,
   onUpdateGradient,
+  updateBgType
 }: {
   gradientColor: {
-    enabled: boolean
     stops: { color: string; position: number }[]
     angle: number
   }
   onUpdateGradient: (
-    gradient: Partial<{ enabled: boolean; stops: { color: string; position: number }[]; angle: number }>,
-  ) => void
+    gradient: Partial<{ stops: { color: string; position: number }[]; angle: number }>,
+  ) => void;
+  updateBgType: (BGType: "COLOR" | "GRADIENT" | "IMAGE") => void
 }) {
   const [isExpanded, setIsExpanded] = useState(false)
   const [selectedStopId, setSelectedStopId] = useState<string | null>(null)
@@ -238,8 +239,8 @@ export function GradientPicker({
 
   const handleSelectPreset = (preset: Gradient) => {
     setInternalStops(preset.stops)
+    updateBgType("GRADIENT")
     onUpdateGradient({
-      enabled: true,
       stops: preset.stops.map(({ color, position }) => ({ color, position })),
       angle: preset.angle,
     })
@@ -248,7 +249,8 @@ export function GradientPicker({
 
   const handleColorChange = (color: string) => {
     const newStops = gradient.stops.map((stop) => (stop.id === selectedStopId ? { ...stop, color } : stop))
-    setInternalStops(newStops)
+    setInternalStops(newStops);
+    updateBgType("GRADIENT")
     onUpdateGradient({
       stops: newStops.map(({ color, position }) => ({ color, position })),
     })
@@ -257,13 +259,15 @@ export function GradientPicker({
   const handlePositionChange = (position: number) => {
     const newStops = gradient.stops.map((stop) => (stop.id === selectedStopId ? { ...stop, position } : stop))
     setInternalStops(newStops)
+    updateBgType("GRADIENT")
     onUpdateGradient({
       stops: newStops.map(({ color, position }) => ({ color, position })),
     })
   }
 
   const handleAngleChange = (angle: number) => {
-    onUpdateGradient({ angle, enabled: true })
+    onUpdateGradient({ angle})
+    updateBgType("GRADIENT")
   }
 
   const addColorStop = () => {
