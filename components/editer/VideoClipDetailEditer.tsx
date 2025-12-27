@@ -147,7 +147,7 @@ function VideoClipDetailEditer({
             <Label className="text-[11px] uppercase tracking-wider text-muted-foreground font-bold">
               Timeline Color
             </Label>
-            <div className="flex items-center gap-2 bg-muted/30 border border-border/50 rounded-md p-1.5">
+            <div className="flex items-center gap-2 bg-muted/30 border border-border/50 p-1.5">
               <div className="relative w-8 h-8 border border-border/50 overflow-hidden shrink-0">
                 <input
                   type="color"

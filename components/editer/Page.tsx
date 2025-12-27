@@ -59,6 +59,7 @@ export default function EditerPage({
     updateVideos,
     deleteVideo,
     addimportedFiles,
+    updateBackImageUrl,
   } = useVideoEditor();
 
   const {
@@ -338,7 +339,7 @@ export default function EditerPage({
   
 
   return (
-    <main className="h-screen flex flex-col select-none overflow-hidden bg-background text-foreground">
+    <main className="h-screen flex flex-col select-none overflow-hidden bg-background text-foreground font-mono">
       {/* Main Content Workspace */}
       <div className="flex-1 flex overflow-hidden w-full max-w-[100vw]">
         {/* Left Sidebar - Fixed Width (handled inside component or add w-16 here) <LeftSidebar />*/}
@@ -428,6 +429,7 @@ export default function EditerPage({
           onUpdateTransition={updateTransition}
           onUpdateTransitionDuration={updateTransitionDuration}
           state={state}
+          updateBgImageUrl={updateBackImageUrl}
         />
       </div>
 

@@ -16,6 +16,7 @@ import { RxCorners, RxPadding } from "react-icons/rx";
 import { MdAnimation, MdDataObject } from "react-icons/md";
 import { Input } from "../ui/input";
 import { Progress } from "../ui/progress";
+import BgImagePicker from "./bg-image-picker";
 
 interface RightMediaPanelProps {
   onUpdateBackground: (color: string) => void;
@@ -38,6 +39,7 @@ interface RightMediaPanelProps {
   progress: number;
   exportFileUrl: string | null;
   updateBgType: (BGType: "COLOR" | "GRADIENT" | "IMAGE") => void;
+  updateBgImageUrl:(imagUrl:string)=>void;
 }
 
 export default function RightMediaPanel({
@@ -55,6 +57,7 @@ export default function RightMediaPanel({
   progress,
   exportFileUrl,
   updateBgType,
+  updateBgImageUrl,
 }: RightMediaPanelProps) {
   const solidecolorpalade = [
     "#000000",
@@ -78,6 +81,11 @@ export default function RightMediaPanel({
     "#F0E4D3",
     "#075B5E",
   ];
+
+  function handelBgImageurl(imageUrl: string) {
+    updateBgType("IMAGE")
+    updateBgImageUrl(imageUrl)
+  }
 
   return (
     <div className="flex my-1 w-100 mr-1 flex-col overflow-hidden rounded-lg border border-border/50 bg-card/50 backdrop-blur-sm">
@@ -156,7 +164,7 @@ export default function RightMediaPanel({
                       value="image"
                       className="gap-2 text-xs data-[state=active]:bg-background data-[state=active]:shadow-sm"
                     >
-                      <ImageIcon className="h-3 w-3" />
+                      <ImageIcon className="h-3 w-3 text-primary" />
                       Image
                     </TabsTrigger>
                   </TabsList>
@@ -237,11 +245,23 @@ export default function RightMediaPanel({
                   </TabsContent>
 
                   <TabsContent value="image" className="pt-4">
-                    <div className="rounded-lg border border-dashed border-border/50 bg-muted/30 p-8 text-center">
-                      <p className="text-sm text-muted-foreground">
-                        Coming soon
-                      </p>
+                    <div className="w-full mb-4 space-y-2">
+                      <h3 className="text-xs font-medium tracking-wider text-muted-foreground">Preview</h3>
+                      <div className="bg-muted relative aspect-video w-full overflow-hidden border shadow-2xl">
+                        {state.bgImageUrl ? (
+                          <img
+                            src={state.bgImageUrl || "/placeholder.svg"}
+                            alt="Background preview"
+                            className="h-full w-full object-cover"
+                          />
+                        ) : (
+                          <div className="flex h-full items-center justify-center text-muted-foreground">
+                            No image selected
+                          </div>
+                        )}
+                      </div>
                     </div>
+                    <BgImagePicker onImageUpdate={handelBgImageurl} />
                   </TabsContent>
                 </Tabs>
               </div>

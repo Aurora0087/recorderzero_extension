@@ -528,7 +528,7 @@ export default function BottomTimeline({
               time={clipEnd}
               pixelsPerSecond={pixelsPerSecond}
               maxDuration={maxDuration}
-              color="#f97316" // Orange
+              color="#FF0080" // red pink
               label="End"
               onChange={handleEndDrag}
               containerRef={containerRef}
@@ -560,13 +560,13 @@ export default function BottomTimeline({
               title="Playhead cursor"
             >
               <div
-                className="w-fit h-fit p-1 px-2 -ml-[50%] text-center bg-red-400 rounded-b-md transition-transform text-[0.5rem] text-white pointer-events-auto cursor-ew-resize hover:text-xs"
+                className="w-fit h-fit p-1 px-2 -ml-[50%] text-center bg-red-500 rounded-b-md transition-transform text-[0.5rem] text-white pointer-events-auto cursor-ew-resize hover:text-xs"
                 onMouseDown={handlePlayheadMouseDown}
               >
                 {formatTime(currentTime)}
               </div>
               <div
-                className=" bg-red-400 w-px h-full cursor-ew-resize pointer-events-auto"
+                className=" bg-red-500 w-px h-full cursor-ew-resize pointer-events-auto"
                 onMouseDown={handlePlayheadMouseDown}
               />
             </div>

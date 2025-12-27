@@ -121,6 +121,10 @@ export function useVideoEditor() {
     setState((prev) => ({ ...prev, backgroundColor: color }));
   }, []);
 
+  const updateBackImageUrl = useCallback((imageUrl: string) => {
+    setState((prev) => ({ ...prev, bgImageUrl: imageUrl }));
+  }, []);
+
   const updateGradient = useCallback(
     (gradient: Partial<VideoEditorState["backgroundGradient"]>) => {
       setState((prev) => ({
@@ -281,6 +285,7 @@ export function useVideoEditor() {
     updateVideos,
     addVideo,
     deleteVideo,
+    updateBackImageUrl,
     addimportedFiles,
   };
 }

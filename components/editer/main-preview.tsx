@@ -119,7 +119,6 @@ export default function MainPreview({
       ctx.fillStyle = backgroundColor || "#000000";
       ctx.fillRect(0, 0, canvas.width, canvas.height);
     } else if (bgType === "IMAGE" && bgImgRef.current) {
-      // Scale image to cover the 1920x1080 canvas
       const img = bgImgRef.current;
       ctx.drawImage(img, 0, 0, canvas.width, canvas.height);
     }
@@ -218,6 +217,7 @@ export default function MainPreview({
                     />
                   );
                 })}
+                <img ref={bgImgRef} src={bgImageUrl} alt="" width={1920} className=" absolute w-0 h-0 opacity-0 pointer-events-none" />
               </div>
             </div>
 
