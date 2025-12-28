@@ -65,7 +65,6 @@ export default function EditerPage({
   const {
     error,
     exportWithFFmpeg,
-    initFFmpeg,
     progress,
     isReady,
     ffmpegMessage,
@@ -464,7 +463,7 @@ export default function EditerPage({
                 <p>Progress</p>
                 <div className="flex gap-2 items-center justify-between">
                   <Progress value={progress} className=" h-1 rounded-none" />
-                  <span>{progress}%</span>
+                  <span>{Math.max(0,Math.min(100,progress))}%</span>
                 </div>
               </div>
               {/* states in presses */}

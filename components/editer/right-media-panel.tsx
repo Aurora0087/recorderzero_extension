@@ -108,7 +108,7 @@ export default function RightMediaPanel({
           </Button>
         </div>
       </div>
-      {progress > 1 && (
+      {progress > 0 && (
         <div className="border-b border-border/50 bg-linear-to-b from-card to-card/80 p-2">
           <div className="flex gap-2 items-center justify-between">
             <Progress value={progress} className=" h-1 rounded-none" />

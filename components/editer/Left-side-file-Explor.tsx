@@ -2,7 +2,6 @@ import { CgAddR, CgArrowTopRight } from "react-icons/cg";
 import { GiSoundWaves } from "react-icons/gi";
 import { ImFilm } from "react-icons/im";
 import { IoImageOutline } from "react-icons/io5";
-import { CiFileOn } from "react-icons/ci";
 import { Separator } from "../ui/separator";
 import {
   VideoAddProps,
