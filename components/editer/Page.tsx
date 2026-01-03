@@ -15,7 +15,6 @@ import {
 } from "@/components/ui/dialog";
 import { Progress } from "../ui/progress";
 import { Check, Download, TerminalSquare, X } from "lucide-react";
-import { FcFolder } from "react-icons/fc";
 import { ScrollArea } from "../ui/scroll-area";
 import { Separator } from "../ui/separator";
 import { Button } from "../ui/button";
@@ -299,6 +298,7 @@ export default function EditerPage({
 
       const video = document.createElement("video");
       let videoDuration = 0;
+      let videoSize = file.size;
       video.src = URL.createObjectURL(file);
       video.onloadedmetadata = () => {
         videoDuration = video.duration;
@@ -311,12 +311,14 @@ export default function EditerPage({
           maxTime: videoDuration,
           id: videoId + "_main",
           localyStoreVId: videoId,
+          sizeByte:videoSize,
         });
         addimportedFiles({
           id: videoId + "_main",
           name: "recording0.mp4",
           type: "video/mp4",
           url,
+          sizeByte:videoSize,
         });
         URL.revokeObjectURL(video.src);
       };

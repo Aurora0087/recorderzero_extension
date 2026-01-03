@@ -17,6 +17,7 @@ export interface VideoTimeLineClip {
   clipedVideoEndTime: number; // after cut/croping orginalvideo.maxtime+leftcropValue
   minTime: number; //0
   maxTime: number; //orginal video duration
+  sizeByte: number;
 }
 
 export interface AudioTimeLine {
@@ -40,6 +41,7 @@ export interface VideoEditorFileProps {
   name: string;
   url: string;
   type: string;
+  sizeByte: number;
 }
 
 export interface VideoEditorState {
@@ -76,6 +78,7 @@ export interface VideoAddProps {
   name: string;
   id: string;
   localyStoreVId: string;
+  sizeByte: number;
 }
 
 export interface VideoUpdateProps {
@@ -176,6 +179,7 @@ export function useVideoEditor() {
       name,
       type,
       localyStoreVId,
+      sizeByte,
     }: VideoAddProps) => {
       setState((prev) => {
         if (prev.videos.some((video) => video.id === id)) {
@@ -225,6 +229,7 @@ export function useVideoEditor() {
           startTime,
           timeLineColor: getRandomColor(),
           muted:false,
+          sizeByte
         };
         return { ...prev, videos: [...prev.videos, newVideo] };
       });
@@ -255,7 +260,7 @@ export function useVideoEditor() {
   }, []);
 
   const addimportedFiles = useCallback(
-    ({ id, name, type, url }: VideoEditorFileProps) => {
+    ({ id, name, type, url,sizeByte }: VideoEditorFileProps) => {
       setState((prev) => {
         if (
           prev.importedFiles.some((imf) => imf.id === id || imf.name === name)
@@ -265,7 +270,7 @@ export function useVideoEditor() {
         }
         return {
           ...prev,
-          importedFiles: [...prev.importedFiles, { id, name, type, url }],
+          importedFiles: [...prev.importedFiles, { id, name, type, url,sizeByte }],
         };
       });
     },

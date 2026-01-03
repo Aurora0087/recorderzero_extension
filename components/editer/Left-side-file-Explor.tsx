@@ -58,6 +58,8 @@ function LeftsidefileExplor({
     const fileType = file.type;
     const fileName = file.name.toLowerCase();
 
+    const fileSize = file.size;
+
     // Check allowed formats
     const isVideo = fileType.startsWith("video/");
     
@@ -81,7 +83,8 @@ function LeftsidefileExplor({
       id: newId,
       name: file.name,
       type: file.type || (isWavAudio ? "audio/wav" : "unknown"),
-      url: objectUrl
+      url: objectUrl,
+      sizeByte:fileSize,
     });
 
     toast.success(`Imported: ${file.name}`);
@@ -221,6 +224,7 @@ function LeftsidefileExplor({
             maxTime: newVideoDuration,
             id: newVideoId,
             localyStoreVId: importedFileDetails.id,
+            sizeByte:importedFileDetails.sizeByte
           });
 
           if (slidingVideoClipId) {

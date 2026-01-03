@@ -27,7 +27,7 @@ export function useFFmpegExport() {
       setFFmpegMessage((pre) => [...pre, message]);
     });
     ffmpeg.on("progress", ({ progress: prog }) =>
-      setProgress(Math.max(0,Math.min(Math.round(prog * 100),100)))
+      setProgress(Math.max(0, Math.min(Math.round(prog * 100), 100)))
     );
 
     try {
@@ -36,9 +36,12 @@ export function useFFmpegExport() {
 
       const localWasmUrl = browser.runtime.getURL("/ffmpeg/ffmpeg-core.wasm");
 
+      const localWasmWorkerUrl = browser.runtime.getURL("/ffmpeg/ffmpeg-core.wasm");
+
       await ffmpeg.load({
         coreURL: await toBlobURL(localCoreJsUrl, "text/javascript"),
         wasmURL: await toBlobURL(localWasmUrl, "application/wasm"),
+        workerURL: await toBlobURL(localWasmWorkerUrl, 'text/javascript'),
       });
 
       ffmpegRef.current = ffmpeg;
@@ -52,173 +55,214 @@ export function useFFmpegExport() {
     }
   }, []);
 
-  const exportWithFFmpeg = useCallback(
+const exportWithFFmpeg = useCallback(
   async ({
     exportType,
     editerState,
+    resolution = "1k",
+    isChunking = false,
   }: {
     exportType: "mp4" | "gif" | "webm" | "av1";
     editerState: VideoEditorState;
+    resolution?: "1k" | "720p" | "480p";
+    isChunking?: boolean;
   }) => {
     try {
+      // 1. Initial State & Validation
       setError(null);
       setExportFileUrl(null);
       setProgress(0);
       setIsExporting(true);
       setIsProcessing(true);
 
-      setFFmpegMessage(["󱓞 Initializing FFmpeg Engine..."]);
+      const clipStart = editerState.clipStart ?? 0;
+      const clipEnd = editerState.clipEnd ?? 0;
+      const totalDuration = clipEnd - clipStart;
+
+      if (totalDuration <= 0 || isNaN(totalDuration)) {
+        throw new Error("Invalid project duration.");
+      }
+
+      setFFmpegMessage([`🚀 Initializing ${isChunking ? "Chunked" : "Single-Pass"} Render...`]);
 
       if (!ffmpegRef.current) await loadFFmpeg();
       const ffmpeg = ffmpegRef.current!;
 
-      const outputW = 1920;
-      const outputH = 1080;
-      const CHUNK_DURATION = 2; // Small chunks for RAM stability
-      const totalDuration = editerState.clipEnd - editerState.clipStart;
-      const chunkCount = Math.ceil(totalDuration / CHUNK_DURATION);
+      let outputW = 1920; let outputH = 1080;
+      if (resolution === "720p") { outputW = 1280; outputH = 720; }
+      else if (resolution === "480p") { outputW = 854; outputH = 480; }
 
-      setFFmpegMessage((pre) => [...pre, ` Project Duration: ${totalDuration.toFixed(2)}s | Parts: ${chunkCount}`]);
+      const finalExt = exportType === "av1" ? "mp4" : exportType;
+      const finalOutputName = `render.${finalExt}`;
+      const padding = editerState.padding ?? 0;
 
-      const chunkDataArrays: Uint8Array[] = [];
+      // --------------------------------------------------------------------------------
+      // BRANCH A: CHUNKED RENDER (Memory Safe)
+      // --------------------------------------------------------------------------------
+      if (isChunking) {
+        const CHUNK_SIZE_LIMIT = 10 * 1024 * 1024; // 10MB target
+        const segments: { start: number; end: number }[] = [];
+        let currentTime = clipStart;
 
-      // --- PHASE 1: RENDER INDIVIDUAL CHUNKS ---
-      for (let i = 0; i < chunkCount; i++) {
-        const chunkStart = editerState.clipStart + i * CHUNK_DURATION;
-        const chunkEnd = Math.min(chunkStart + CHUNK_DURATION, editerState.clipEnd);
-        const currentChunkDuration = chunkEnd - chunkStart;
-
-        setFFmpegMessage((pre) => [...pre, `󱦟 Rendering Part ${i + 1}/${chunkCount} (${currentChunkDuration.toFixed(1)}s)...`]);
-
-        // 1. Prepare Background
-        const bgImageName = `bg_${i}.png`;
-        const bgBlob = await createBackgroundBlob(outputW, outputH, {
-          type: editerState.bgType,
-          color: editerState.backgroundColor,
-          gradient: editerState.backgroundGradient,
-          imageUrl: editerState.bgImageUrl,
-        });
-        await ffmpeg.writeFile(bgImageName, await fetchFile(bgBlob));
-
-        // 2. Build Inputs/Filters
-        const inputs: string[] = ["-loop", "1", "-i", bgImageName];
-        const filterParts: string[] = [];
-        let lastLabel = "[0:v]";
-
-        for (let j = 0; j < editerState.videos.length; j++) {
-          const video = editerState.videos[j];
-          const vDuration = video.clipedVideoEndTime - video.clipedVideoStartTime;
-          const vStartOnTimeline = video.startTime;
-          const vEndOnTimeline = video.startTime + vDuration;
-
-          const renderStart = Math.max(vStartOnTimeline, chunkStart);
-          const renderEnd = Math.min(vEndOnTimeline, chunkEnd);
-
-          if (renderStart >= renderEnd) continue;
-
-          const sourceStart = video.clipedVideoStartTime + (renderStart - vStartOnTimeline);
-          const sourceEnd = video.clipedVideoStartTime + (renderEnd - vStartOnTimeline);
-          const relStart = renderStart - chunkStart;
-          const relEnd = renderEnd - chunkStart;
-
-          const { w: videoW, h: videoH } = await getVideoDimensions(video.url);
-          const fitScale = Math.min(outputW / videoW, outputH / videoH);
-          const paddingScaleFactor = outputW / (outputW + 2 * editerState.padding);
-          const combinedScale = fitScale * paddingScaleFactor;
-
-          const scaledW = Math.floor((videoW * combinedScale) / 2) * 2;
-          const scaledH = Math.floor((videoH * combinedScale) / 2) * 2;
-
-          const maskName = `m_${i}_${j}.png`;
-          const mBlob = await createRoundedMaskBlob({
-            width: scaledW,
-            height: scaledH,
-            radius: editerState.borderRadius * paddingScaleFactor,
+        // Create Segments
+        while (currentTime < clipEnd) {
+          const activeVideos = editerState.videos.filter((v) => {
+            const vEnd = v.startTime + (v.clipedVideoEndTime - v.clipedVideoStartTime);
+            return currentTime >= v.startTime && currentTime < vEnd;
           });
-
-          await ffmpeg.writeFile(maskName, await fetchFile(mBlob));
-          await ffmpeg.writeFile(`v_${j}`, await fetchFile(video.url));
-
-          inputs.push("-ss", `${sourceStart}`, "-to", `${sourceEnd}`, "-i", `v_${j}`);
-          inputs.push("-i", maskName);
-
-          const vIdx = inputs.filter((a) => a === "-i").length - 2;
-          const mIdx = inputs.filter((a) => a === "-i").length - 1;
-
-          filterParts.push(`[${vIdx}:v]fps=25,scale=${scaledW}:${scaledH},setpts=PTS-STARTPTS,format=rgba[vs${j}]`);
-          filterParts.push(`[vs${j}][${mIdx}:v]alphamerge[vm${j}]`);
-          filterParts.push(`${lastLabel}[vm${j}]overlay=${(outputW - scaledW) / 2}:${(outputH - scaledH) / 2}:enable='between(t,${relStart},${relEnd})'[ov${j}]`);
-          lastLabel = `[ov${j}]`;
+          let step = 10;
+          if (activeVideos.length > 0) {
+            const maxBitrate = Math.max(...activeVideos.map(v => v.sizeByte / (v.clipedVideoEndTime - v.clipedVideoStartTime)));
+            step = CHUNK_SIZE_LIMIT / maxBitrate;
+          }
+          step = Math.max(1, Math.min(60, step));
+          let nextTime = Math.min(currentTime + step, clipEnd);
+          segments.push({ start: currentTime, end: nextTime });
+          currentTime = nextTime;
         }
 
-        const chunkName = `chunk_${i}.mp4`;
+        const chunkDataArrays: Uint8Array[] = [];
 
-        await ffmpeg.exec([
-          "-fflags", "+genpts",
-          ...inputs,
-          "-filter_complex", filterParts.length > 0 ? filterParts.join(";") : "format=yuv420p",
-          "-map", filterParts.length > 0 ? lastLabel : "0:v",
-          "-t", `${currentChunkDuration}`,
-          "-c:v", "libx264", "-preset", "ultrafast", "-crf", "22", "-pix_fmt", "yuv420p", "-r", "25",
-          chunkName,
-        ]);
+        for (let i = 0; i < segments.length; i++) {
+          const chunk = segments[i];
+          const curDur = chunk.end - chunk.start;
+          setFFmpegMessage(pre => [...pre, `󱦟 Rendering Chunk ${i + 1}/${segments.length} (${curDur.toFixed(1)}s)...`]);
 
-        const data = await ffmpeg.readFile(chunkName);
-        chunkDataArrays.push(data as Uint8Array);
+          const bgImg = `bg.png`;
+          const bgBlob = await createBackgroundBlob(outputW, outputH, { type: editerState.bgType, color: editerState.backgroundColor, gradient: editerState.backgroundGradient, imageUrl: editerState.bgImageUrl });
+          await ffmpeg.writeFile(bgImg, await fetchFile(bgBlob));
 
-        // CLEAR RAM for next chunk
-        const files = await ffmpeg.listDir("/");
-        for (const f of files) { if (!f.isDir) await ffmpeg.deleteFile(f.name); }
+          const inputs: string[] = ["-loop", "1", "-i", bgImg];
+          const filters: string[] = [];
+          let lastL = "[0:v]";
 
-        setProgress(Math.max(0,Math.min(100,Math.round(((i + 1) / chunkCount) * 80))));
+          for (let j = 0; j < editerState.videos.length; j++) {
+            const v = editerState.videos[j];
+            const vEnd = v.startTime + (v.clipedVideoEndTime - v.clipedVideoStartTime);
+            const rStart = Math.max(v.startTime, chunk.start);
+            const rEnd = Math.min(vEnd, chunk.end);
+            if (rStart >= rEnd) continue;
+
+            const sStart = v.clipedVideoStartTime + (rStart - v.startTime);
+            const sEnd = v.clipedVideoStartTime + (rEnd - v.startTime);
+            const relS = rStart - chunk.start;
+            const relE = rEnd - chunk.start;
+
+            const { w: vW, h: vH } = await getVideoDimensions(v.url);
+            const scale = (outputW / (outputW + 2 * padding)) * Math.min(outputW / vW, outputH / vH);
+            const sW = Math.floor((vW * scale) / 2) * 2;
+            const sH = Math.floor((vH * scale) / 2) * 2;
+
+            const mName = `m_${j}.png`;
+            const mBlob = await createRoundedMaskBlob({ width: sW, height: sH, radius: editerState.borderRadius * (outputW / (outputW + 2 * padding)) });
+            await ffmpeg.writeFile(mName, await fetchFile(mBlob));
+            await ffmpeg.writeFile(`v_${j}`, await fetchFile(v.url));
+
+            inputs.push("-ss", sStart.toFixed(3), "-to", sEnd.toFixed(3), "-i", `v_${j}`, "-i", mName);
+            const vIdx = inputs.filter(a => a === "-i").length - 2;
+            const mIdx = vIdx + 1;
+
+            filters.push(`[${vIdx}:v]fps=25,scale=${sW}:${sH},setpts=PTS-STARTPTS,format=rgba[vs${j}]`);
+            filters.push(`[vs${j}][${mIdx}:v]alphamerge[vm${j}]`);
+            filters.push(`${lastL}[vm${j}]overlay=${(outputW - sW) / 2}:${(outputH - sH) / 2}:enable='between(t,${relS.toFixed(3)},${relE.toFixed(3)})'[ov${j}]`);
+            lastL = `[ov${j}]`;
+          }
+
+          await ffmpeg.exec(["-fflags", "+genpts", ...inputs, "-filter_complex", filters.length > 0 ? filters.join(";") : "format=yuv420p", "-map", filters.length > 0 ? lastL : "0:v", "-t", curDur.toFixed(3), "-c:v", "libx264", "-preset", "ultrafast", "-crf", "22", "-pix_fmt", "yuv420p", "-r", "25", `c${i}.mp4`]);
+          const data = await ffmpeg.readFile(`c${i}.mp4`);
+          chunkDataArrays.push(data as Uint8Array);
+
+          const files = await ffmpeg.listDir("/");
+          for (const f of files) { if (!f.isDir) await ffmpeg.deleteFile(f.name); }
+          setProgress(Math.round(((i + 1) / segments.length) * 85));
+        }
+
+        // Join Chunks
+        const concatList: string[] = [];
+        for (let i = 0; i < chunkDataArrays.length; i++) {
+          await ffmpeg.writeFile(`p${i}.mp4`, chunkDataArrays[i]);
+          concatList.push(`file p${i}.mp4`);
+        }
+        await ffmpeg.writeFile("list.txt", concatList.join("\n"));
+        let finalArgs = ["-f", "concat", "-safe", "0", "-i", "list.txt"];
+        if (exportType === "mp4" || exportType === "av1") finalArgs.push("-c", "copy", finalOutputName);
+        else finalArgs.push("-c:v", exportType === "webm" ? "libvpx-vp9" : "libx264", finalOutputName);
+        
+        await ffmpeg.exec(finalArgs);
+
+      } 
+      // --------------------------------------------------------------------------------
+      // BRANCH B: SINGLE-PASS RENDER (Fast)
+      // --------------------------------------------------------------------------------
+      else {
+        setFFmpegMessage(pre => [...pre, `🎬 Rendering entire project in one pass...`]);
+        
+        const bgBlob = await createBackgroundBlob(outputW, outputH, { type: editerState.bgType, color: editerState.backgroundColor, gradient: editerState.backgroundGradient, imageUrl: editerState.bgImageUrl });
+        await ffmpeg.writeFile("bg.png", await fetchFile(bgBlob));
+
+        const inputs: string[] = ["-loop", "1", "-i", "bg.png"];
+        const filters: string[] = [];
+        let lastL = "[0:v]";
+
+        for (let j = 0; j < editerState.videos.length; j++) {
+          const v = editerState.videos[j];
+          const vDur = v.clipedVideoEndTime - v.clipedVideoStartTime;
+          const vEnd = v.startTime + vDur;
+
+          // Only include if video falls within clipStart/End
+          const rStart = Math.max(v.startTime, clipStart);
+          const rEnd = Math.min(vEnd, clipEnd);
+          if (rStart >= rEnd) continue;
+
+          const sStart = v.clipedVideoStartTime + (rStart - v.startTime);
+          const sEnd = v.clipedVideoStartTime + (rEnd - v.startTime);
+          const relStart = rStart - clipStart;
+          const relEnd = rEnd - clipStart;
+
+          const { w: vW, h: vH } = await getVideoDimensions(v.url);
+          const scale = (outputW / (outputW + 2 * padding)) * Math.min(outputW / vW, outputH / vH);
+          const sW = Math.floor((vW * scale) / 2) * 2;
+          const sH = Math.floor((vH * scale) / 2) * 2;
+
+          const mName = `m_${j}.png`;
+          const mBlob = await createRoundedMaskBlob({ width: sW, height: sH, radius: editerState.borderRadius * (outputW / (outputW + 2 * padding)) });
+          await ffmpeg.writeFile(mName, await fetchFile(mBlob));
+          await ffmpeg.writeFile(`v_${j}`, await fetchFile(v.url));
+
+          inputs.push("-ss", sStart.toFixed(3), "-to", sEnd.toFixed(3), "-i", `v_${j}`, "-i", mName);
+          const vIdx = inputs.filter(a => a === "-i").length - 2;
+          
+          filters.push(`[${vIdx}:v]fps=25,scale=${sW}:${sH},setpts=PTS-STARTPTS,format=rgba[vs${j}]`);
+          filters.push(`[vs${j}][${vIdx+1}:v]alphamerge[vm${j}]`);
+          filters.push(`${lastL}[vm${j}]overlay=${(outputW-sW)/2}:${(outputH-sH)/2}:enable='between(t,${relStart.toFixed(3)},${relEnd.toFixed(3)})'[ov${j}]`);
+          lastL = `[ov${j}]`;
+        }
+
+        const args = ["-fflags", "+genpts", ...inputs, "-filter_complex", filters.join(";"), "-map", lastL, "-t", totalDuration.toFixed(3)];
+        
+        if (exportType === "mp4") args.push("-c:v", "libx264", "-preset", "ultrafast", "-crf", "22", "-pix_fmt", "yuv420p", finalOutputName);
+        else if (exportType === "gif") args.push("-f", "gif", finalOutputName);
+        else if (exportType === "av1") args.push("-c:v", "libaom-av1", "-crf", "30", "-cpu-used", "8", finalOutputName);
+        else args.push("-c:v", "libvpx-vp9", "-crf", "30", finalOutputName);
+
+        await ffmpeg.exec(args);
       }
 
-      // --- PHASE 2: JOINING & FINAL CONVERSION ---
-      setFFmpegMessage((pre) => [...pre, ` Stitching segments and preparing final ${exportType.toUpperCase()}...`]);
-
-      const concatEntries: string[] = [];
-      for (let i = 0; i < chunkDataArrays.length; i++) {
-        const name = `part_${i}.mp4`;
-        await ffmpeg.writeFile(name, chunkDataArrays[i]);
-        concatEntries.push(`file ${name}`);
-      }
-      await ffmpeg.writeFile("list.txt", concatEntries.join("\n"));
-
-      const finalOutputName = `final_render.${exportType === "av1" ? "mp4" : exportType}`;
-      
-      let finalArgs = ["-f", "concat", "-safe", "0", "-i", "list.txt"];
-
-      // Add Export-Specific Encoders
-      if (exportType === "mp4") {
-        finalArgs.push("-c", "copy", finalOutputName);
-      } else if (exportType === "gif") {
-        finalArgs.push("-vf", "fps=10,scale=720:-1:flags=lanczos", finalOutputName);
-      } else if (exportType === "webm") {
-        finalArgs.push("-c:v", "libvpx-vp9", "-crf", "30", "-b:v", "0", finalOutputName);
-      } else if (exportType === "av1") {
-        finalArgs.push("-c:v", "libaom-av1", "-crf", "30", "-cpu-used", "8", finalOutputName);
-      }
-
-      await ffmpeg.exec(finalArgs);
-
-      // --- PHASE 3: DOWNLOAD ---
-      setFFmpegMessage((pre) => [...pre, ` Export Complete! Preparing Download...`]);
+      // --------------------------------------------------------------------------------
+      // FINAL PHASE: DOWNLOAD
+      // --------------------------------------------------------------------------------
       const finalData = await ffmpeg.readFile(finalOutputName);
-      const mimeType = exportType === "gif" ? "image/gif" : exportType === "webm" ? "video/webm" : "video/mp4";
-      const blob = new Blob([finalData as any], { type: mimeType });
-      const url = URL.createObjectURL(blob);
-      
+      const url = URL.createObjectURL(new Blob([finalData as any], { type: `video/${finalExt}` }));
       const a = document.createElement("a");
       a.href = url;
-      a.download = `video-${Date.now()}.${exportType === "av1" ? "mp4" : exportType}`;
+      a.download = `render-${Date.now()}.${finalExt}`;
       a.click();
-
+      
       setProgress(100);
-
+      setFFmpegMessage(pre => [...pre, "✅ Done!"]);
     } catch (err) {
-      console.error("Render Failed:", err);
-      setFFmpegMessage((pre) => [...pre, ` Error: ${err instanceof Error ? err.message : "Export failed"}`]);
-      setError("Rendering failed. Please try a shorter duration or lower resolution.");
+      console.error(err);
+      setFFmpegMessage(p => [...p, `❌ Error: ${err instanceof Error ? err.message : "Unknown"}`]);
     } finally {
       setIsExporting(false);
       setIsProcessing(false);
