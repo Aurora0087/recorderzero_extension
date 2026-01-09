@@ -13,16 +13,16 @@ interface MainPreviewProps {
   setIsPlaying: (value: SetStateAction<boolean>) => void;
   onLoadedMetadata: () => void;
   onTimeUpdateHandel: ({ vid }: { vid: string }) => void;
-  onImportClick: () => void;
   currentTime: number;
   clipStart: number;
   clipEnd: number;
   backgroundColor: string;
   backgroundGradient: {
-    enabled: boolean;
     stops: { color: string; position: number }[];
     angle: number;
   };
+  bgType: "COLOR" | "GRADIENT" | "IMAGE";
+  bgImageUrl: string;
   padding: number;
   borderRadius: number;
   transition: string;
@@ -38,7 +38,6 @@ export default function MainPreview({
   setIsPlaying,
   onLoadedMetadata,
   onTimeUpdateHandel,
-  onImportClick,
   currentTime,
   backgroundColor,
   backgroundGradient,
@@ -47,6 +46,8 @@ export default function MainPreview({
   onSeek,
   videoRefs,
   togglePlay,
+  bgType,
+  bgImageUrl,
 }: MainPreviewProps) {
   const containerRef = useRef<HTMLDivElement>(null);
   const canvasRef = useRef<HTMLCanvasElement>(null);
@@ -56,8 +57,21 @@ export default function MainPreview({
   const [activeRadiusing, setActiveRadiusing] = useState(0);
   const videoRapperRef = useRef<HTMLDivElement>(null);
 
+  const bgImgRef = useRef<HTMLImageElement | null>(null);
+
   const CANVAS_WIDTH = 1920;
   const CANVAS_HEIGHT = 1080;
+
+  useEffect(() => {
+    if (bgType === "IMAGE" && bgImageUrl) {
+      const img = new Image();
+      img.src = bgImageUrl; // if bgImageUrl is a string
+      img.onload = () => {
+        bgImgRef.current = img;
+        renderFrame(); // Re-render once image is ready
+      };
+    }
+  }, [bgImageUrl, bgType]);
 
   const renderFrame = useCallback(() => {
     const canvas = canvasRef.current;
@@ -70,7 +84,7 @@ export default function MainPreview({
     ctx.clearRect(0, 0, canvas.width, canvas.height);
 
     // 2. Draw Background
-    if (backgroundGradient.enabled) {
+    if (bgType === "GRADIENT") {
       try {
         // Converting angle to radians ***(0° = right, 90° = down, 180° = left, 270° = up)***
         const angleRad = ((backgroundGradient.angle - 90) * Math.PI) / 180;
@@ -95,15 +109,19 @@ export default function MainPreview({
           });
 
         ctx.fillStyle = gradient;
+        ctx.fillRect(0, 0, canvas.width, canvas.height);
       } catch (e) {
         // Fallback if color parsing fails
         ctx.fillStyle = backgroundColor || "#000000";
+        ctx.fillRect(0, 0, canvas.width, canvas.height);
       }
-    } else {
+    } else if (bgType === "COLOR") {
       ctx.fillStyle = backgroundColor || "#000000";
+      ctx.fillRect(0, 0, canvas.width, canvas.height);
+    } else if (bgType === "IMAGE" && bgImgRef.current) {
+      const img = bgImgRef.current;
+      ctx.drawImage(img, 0, 0, canvas.width, canvas.height);
     }
-
-    ctx.fillRect(0, 0, canvas.width, canvas.height);
 
     const canvasWrapperW = canvasWrapper.current?.offsetWidth || 1;
     const canvasWrapperH = canvasWrapper.current?.offsetHeight || 1;
@@ -120,17 +138,32 @@ export default function MainPreview({
       0.5;
     setActivePaddingY(extraPH * scaleFactorW);
     setActiveRadiusing(borderRadius * scaleFactorW);
-  }, [backgroundColor, backgroundGradient, padding, borderRadius]);
+  }, [
+    backgroundColor,
+    backgroundGradient,
+    bgType,
+    padding,
+    borderRadius,
+    videos,
+  ]);
 
   // Main Effect: Set up listeners
   useEffect(() => {
     renderFrame();
-  }, [videoRefs]);
+  }, [videoRefs, videos]);
 
   // Effect: Re-render when style props change
   useEffect(() => {
     requestAnimationFrame(renderFrame);
-  }, [currentTime, padding, borderRadius, backgroundColor, backgroundGradient]);
+  }, [
+    currentTime,
+    padding,
+    borderRadius,
+    backgroundColor,
+    backgroundGradient,
+    bgType,
+    videos,
+  ]);
 
   return (
     <div className="flex-1 flex flex-col items-center justify-center bg-card overflow-hidden rounded-md border p-2">
@@ -173,8 +206,10 @@ export default function MainPreview({
                           videoRefs.current.delete(v.id);
                         }
                       }}
-                      onTimeUpdate={()=>onTimeUpdateHandel({vid:v.id})}
-                      onEnded={()=>{console.log("VideoEnd.");
+                      muted={v.muted}
+                      onTimeUpdate={() => onTimeUpdateHandel({ vid: v.id })}
+                      onEnded={() => {
+                        console.log("VideoEnd.");
                       }}
                       src={v.url}
                       controls={false}
@@ -182,6 +217,7 @@ export default function MainPreview({
                     />
                   );
                 })}
+                <img ref={bgImgRef} src={bgImageUrl} alt="" width={1920} className=" absolute w-0 h-0 opacity-0 pointer-events-none" />
               </div>
             </div>
 

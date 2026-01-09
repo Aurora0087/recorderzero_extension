@@ -84,7 +84,7 @@ export default function WelcomePage() {
         {/* Hero Section */}
         <div className="text-center mb-12">
           <h1 className="text-4xl sm:text-5xl font-bold mb-4 text-foreground text-balance">
-            Welcome to RecorderZero
+            Welcome to Recorder<span className="text-primary">Zero</span>
           </h1>
           <p className="text-lg text-muted-foreground text-balance">
             Start recording your browser tab, fullscreen, or individual windows

@@ -1,4 +1,4 @@
-import { getRandomColor, makeId } from "@/lib/utils";
+import { getRandomColor } from "@/lib/utils";
 import { useState, useCallback } from "react";
 
 ///////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////
@@ -11,31 +11,52 @@ export interface VideoTimeLineClip {
   timeLineColor: string;
   url: string;
   type: string;
+  muted?:boolean;
   startTime: number; // strting position in time line
   clipedVideoStartTime: number; // after cut/croping orginalvideo.mintime+leftcropValue
   clipedVideoEndTime: number; // after cut/croping orginalvideo.maxtime+leftcropValue
   minTime: number; //0
   maxTime: number; //orginal video duration
+  sizeByte: number;
 }
 
-export interface VideoEditorFileProps{
+export interface AudioTimeLine {
+  id: string;
+  localyStoreVId: string;
+  channel: string;
+  name: string;
+  timeLineColor: string;
+  url: string;
+  type: string;
+  likedVideoClipId:string|null;
+  startTime: number; // strting position in time line
+  clipedAudioStartTime: number; // after cut/croping orginalvideo.mintime+leftcropValue
+  clipedAudioEndTime: number; // after cut/croping orginalvideo.maxtime+leftcropValue
+  minTime: number; //0
+  maxTime: number; //orginal video duration
+}
+
+export interface VideoEditorFileProps {
   id: string;
   name: string;
   url: string;
   type: string;
+  sizeByte: number;
 }
 
 export interface VideoEditorState {
   clipStart: number;
   clipEnd: number;
+  bgType:"COLOR"|"GRADIENT"|"IMAGE";
   backgroundColor: string;
   backgroundGradient: {
-    enabled: boolean;
     stops: { color: string; position: number }[];
     angle: number;
   };
+  bgImageUrl:string;
   videos: VideoTimeLineClip[];
-  importedFiles:VideoEditorFileProps[];
+  audios:AudioTimeLine[];
+  importedFiles: VideoEditorFileProps[];
   zoompans: {
     time: number;
     level: number;
@@ -57,9 +78,10 @@ export interface VideoAddProps {
   name: string;
   id: string;
   localyStoreVId: string;
+  sizeByte: number;
 }
 
-export interface  VideoUpdateProps {
+export interface VideoUpdateProps {
   id: string;
   changeData: Partial<VideoTimeLineClip>;
 }
@@ -70,25 +92,25 @@ export function useVideoEditor() {
   const [state, setState] = useState<VideoEditorState>({
     clipStart: 0,
     clipEnd: 0,
-    backgroundColor: "#1a1a1a",
+    bgType:"COLOR",
+    backgroundColor: "#FF5555",
     backgroundGradient: {
-      enabled: false,
       stops: [
         { color: "#000000", position: 0 },
         { color: "#1a1a1a", position: 100 },
       ],
       angle: 45,
     },
+    bgImageUrl:"",
     zoompans: [],
     videos: [],
-    importedFiles:[],
-    padding: 0,
-    borderRadius: 0,
+    audios:[],
+    importedFiles: [],
+    padding: 50,
+    borderRadius: 20,
     transition: "none",
     transitionDuration: 0.5,
   });
-
-  const [isProcessing, setIsProcessing] = useState(false);
 
   const updateClip = useCallback((start: number, end: number) => {
     setState((prev) => ({
@@ -102,6 +124,10 @@ export function useVideoEditor() {
     setState((prev) => ({ ...prev, backgroundColor: color }));
   }, []);
 
+  const updateBackImageUrl = useCallback((imageUrl: string) => {
+    setState((prev) => ({ ...prev, bgImageUrl: imageUrl }));
+  }, []);
+
   const updateGradient = useCallback(
     (gradient: Partial<VideoEditorState["backgroundGradient"]>) => {
       setState((prev) => ({
@@ -111,6 +137,13 @@ export function useVideoEditor() {
     },
     []
   );
+
+  const updateBgType = useCallback((BGType:"COLOR"|"GRADIENT"|"IMAGE")=>{
+    setState((prev)=>({
+      ...prev,
+      bgType:BGType
+    }));
+  },[])
 
   const updatePadding = useCallback((padding: number) => {
     setState((prev) => ({
@@ -138,7 +171,16 @@ export function useVideoEditor() {
   }, []);
 
   const addVideo = useCallback(
-    ({ url, id, maxTime, minTime, name, type,localyStoreVId }: VideoAddProps) => {
+    ({
+      url,
+      id,
+      maxTime,
+      minTime,
+      name,
+      type,
+      localyStoreVId,
+      sizeByte,
+    }: VideoAddProps) => {
       setState((prev) => {
         if (prev.videos.some((video) => video.id === id)) {
           // Video with this ID already exists, do nothing
@@ -151,6 +193,28 @@ export function useVideoEditor() {
           startTime = +vd.clipedVideoEndTime;
         });
 
+        let uniqueName = name;
+        let counter = 1;
+
+        // Helper to check if name exists in the current list
+        const isNameTaken = (n: string) =>
+          prev.videos.some((v) => v.name === n);
+
+        while (isNameTaken(uniqueName)) {
+          // Try to handle file extensions gracefully (e.g., "myvideo.mp4" -> "myvideo (1).mp4")
+          const lastDotIndex = name.lastIndexOf(".");
+
+          if (lastDotIndex !== -1) {
+            const fileName = name.substring(0, lastDotIndex);
+            const extension = name.substring(lastDotIndex);
+            uniqueName = `${fileName}-(${counter})${extension}`;
+          } else {
+            // No extension
+            uniqueName = `${name} (${counter})`;
+          }
+          counter++;
+        }
+
         const newVideo: VideoTimeLineClip = {
           id,
           localyStoreVId: localyStoreVId,
@@ -160,10 +224,12 @@ export function useVideoEditor() {
           clipedVideoStartTime: minTime,
           maxTime: maxTime,
           minTime: minTime,
-          name,
+          name: uniqueName,
           channel: "videos-0",
           startTime,
           timeLineColor: getRandomColor(),
+          muted:false,
+          sizeByte
         };
         return { ...prev, videos: [...prev.videos, newVideo] };
       });
@@ -186,62 +252,45 @@ export function useVideoEditor() {
     });
   }, []);
 
-  const addimportedFiles = useCallback(({id,name,type,url}:VideoEditorFileProps)=>{
-    setState((prev)=>{
-      if (prev.importedFiles.some((imf) => (imf.id === id||imf.name===name))) {
+  const deleteVideo = useCallback(({ id }: { id: string }) => {
+    setState((prev) => {
+      const updatedVideos = prev.videos.filter((video) => video.id !== id);
+      return { ...prev, videos: updatedVideos };
+    });
+  }, []);
+
+  const addimportedFiles = useCallback(
+    ({ id, name, type, url,sizeByte }: VideoEditorFileProps) => {
+      setState((prev) => {
+        if (
+          prev.importedFiles.some((imf) => imf.id === id || imf.name === name)
+        ) {
           // file with this ID or name already exists, do nothing
           return prev;
         }
-        return {...prev,importedFiles:[...prev.importedFiles,{id,name,type,url}]}
-    })
-  },[])
-
-  const exportVideo = useCallback(async () => {
-    setIsProcessing(true);
-    try {
-      const timestamp = new Date()
-        .toISOString()
-        .replace(/[:.]/g, "-")
-        .slice(0, -5);
-      const filename = `edited-video-${timestamp}.mp4`;
-
-      // Create a dummy blob for demonstration
-      // In production, this would use FFmpeg WASM to process the actual video
-      const dummyData = new Array(1024 * 1024).fill(0);
-      const blob = new Blob([new Uint8Array(dummyData)], { type: "video/mp4" });
-
-      // Trigger download
-      const url = URL.createObjectURL(blob);
-      const link = document.createElement("a");
-      link.href = url;
-      link.download = filename;
-      document.body.appendChild(link);
-      link.click();
-      document.body.removeChild(link);
-      URL.revokeObjectURL(url);
-
-      console.log("Exported with settings:", state);
-    } catch (error) {
-      console.error("Export failed:", error);
-      alert("Export failed. Please try again.");
-    } finally {
-      setIsProcessing(false);
-    }
-  }, [state]);
+        return {
+          ...prev,
+          importedFiles: [...prev.importedFiles, { id, name, type, url,sizeByte }],
+        };
+      });
+    },
+    []
+  );
 
   return {
     state,
     updateClip,
+    updateBgType,
     updateBackground,
     updateGradient,
     updatePadding,
     updateBorderRadius,
     updateTransition,
     updateTransitionDuration,
-    exportVideo,
     updateVideos,
     addVideo,
+    deleteVideo,
+    updateBackImageUrl,
     addimportedFiles,
-    isProcessing,
   };
 }

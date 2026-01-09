@@ -15,6 +15,7 @@ export function useFFmpegExport() {
   const [error, setError] = useState<string | null>(null);
   const isLoadingRef = useRef(false);
   const [exportFileUrl, setExportFileUrl] = useState<string | null>(null);
+  const [isProcessing, setIsProcessing] = useState(false);
 
   const loadFFmpeg = useCallback(async () => {
     if (ffmpegRef.current || isLoadingRef.current) return;
@@ -26,7 +27,7 @@ export function useFFmpegExport() {
       setFFmpegMessage((pre) => [...pre, message]);
     });
     ffmpeg.on("progress", ({ progress: prog }) =>
-      setProgress(Math.round(prog * 100))
+      setProgress(Math.max(0, Math.min(Math.round(prog * 100), 100)))
     );
 
     try {
@@ -35,9 +36,12 @@ export function useFFmpegExport() {
 
       const localWasmUrl = browser.runtime.getURL("/ffmpeg/ffmpeg-core.wasm");
 
+      const localWasmWorkerUrl = browser.runtime.getURL("/ffmpeg/ffmpeg-core.wasm");
+
       await ffmpeg.load({
         coreURL: await toBlobURL(localCoreJsUrl, "text/javascript"),
         wasmURL: await toBlobURL(localWasmUrl, "application/wasm"),
+        workerURL: await toBlobURL(localWasmWorkerUrl, 'text/javascript'),
       });
 
       ffmpegRef.current = ffmpeg;
@@ -51,271 +55,278 @@ export function useFFmpegExport() {
     }
   }, []);
 
-  const exportWithFFmpeg = useCallback(
-    async ({
-      exportType,
-      editerState,
-    }: {
-      exportType: "mp4" | "gif" | "webm";
-      editerState: VideoEditorState;
-    }) => {
-      try {
-        setError(null);
-        setExportFileUrl(null);
-        setProgress(0);
-        setIsExporting(true);
+const exportWithFFmpeg = useCallback(
+  async ({
+    exportType,
+    editerState,
+    resolution = "1k",
+    isChunking = false,
+  }: {
+    exportType: "mp4" | "gif" | "webm" | "av1";
+    editerState: VideoEditorState;
+    resolution?: "1k" | "720p" | "480p";
+    isChunking?: boolean;
+  }) => {
+    try {
+      // 1. Initial State & Validation
+      setError(null);
+      setExportFileUrl(null);
+      setProgress(0);
+      setIsExporting(true);
+      setIsProcessing(true);
 
-        setFFmpegMessage(["****Starting Exporing File Prosses.****"]);
+      const clipStart = editerState.clipStart ?? 0;
+      const clipEnd = editerState.clipEnd ?? 0;
+      const totalDuration = clipEnd - clipStart;
 
-        // --- 1. Initialize FFmpeg ---
-        if (!ffmpegRef.current) {
-          await loadFFmpeg();
-          // specific check if load failed
-          if (!ffmpegRef.current)
-            throw new Error("Could not initialize FFmpeg");
-        }
-
-        const outputH = 1080;
-        const outputW = 1920;
-
-        let inputs: string[] = [];
-        const maskImageName = "maskImageName.png";
-        let filterChain = "";
-
-        setFFmpegMessage((pre) => [
-          ...pre,
-          "****FFmpeg Loaded successfully.****",
-        ]);
-
-        const ffmpeg = ffmpegRef.current;
-
-        // --- 2. Input Validation & Setup ---
-        if (!editerState.videos || editerState.videos.length === 0) {
-          throw new Error("No videos found in state");
-        }
-        setFFmpegMessage((pre) => [...pre, `**** Finding Edits.****`]);
-
-        const video = editerState.videos[0];
-        const inputName = video.name;
-        const outputName = `output.${exportType}`;
-        const bgImageName = "bg_image.png";
-
-        // --- 3. Get Video Dimensions ---
-        // We need original dimensions to calculate the padded size
-        setFFmpegMessage((pre) => [
-          ...pre,
-          "**** Calculating Dimensions... ****",
-        ]);
-        const { w: videoW, h: videoH } = await getVideoDimensions(video.url);
-
-        const padding = editerState.padding || 0;
-        let extraPW = padding;
-        let extraPH = padding;
-        let totalH = videoH + padding * 2;
-        let totalW = videoW + padding * 2;
-
-        if (outputH < outputW) {
-          if (videoW < videoH) {
-            extraPW =
-              (((videoH + 2 * padding) * outputW) / outputH - videoW) * 0.5;
-            setFFmpegMessage((pre) => [
-              ...pre,
-              `****Left padding ${extraPW}.****`,
-            ]);
-            totalW = videoW + extraPW * 2;
-          } else {
-            extraPH =
-              (((videoW + 2 * padding) * outputH) / outputW - videoH) * 0.5;
-            setFFmpegMessage((pre) => [
-              ...pre,
-              `****Top padding ${extraPH}.****`,
-            ]);
-            totalH = videoH + extraPH * 2;
-          }
-        }
-
-        // --- 4. Write Main Video File ---
-        const fileData = await fetchFile(video.url);
-        setFFmpegMessage((pre) => [
-          ...pre,
-          `****Fetching ${video.name}'s File data.****`,
-        ]);
-        await ffmpeg.writeFile(inputName, fileData);
-        setFFmpegMessage((pre) => [
-          ...pre,
-          `****Writeing  ${video.name}'s file data in FFmpeg Sueessfull.****`,
-        ]);
-
-        // --- 5. Prepare FFmpeg Command Arguments ---
-        let ffmpegArgs: string[] = [];
-
-        let bgBlob;
-
-        // is gradiend bg using
-        if (editerState.backgroundGradient.enabled) {
-          setFFmpegMessage((pre) => [
-            ...pre,
-            "**** Generating Gradient Image ****",
-          ]);
-
-          // 1. Generate Gradient Blob via Canvas
-          bgBlob = await createGradientBlob(
-            totalW,
-            totalH,
-            editerState.backgroundGradient.stops,
-            editerState.backgroundGradient.angle
-          );
-
-          setFFmpegMessage((pre) => [
-            ...pre,
-            `**** Generating Gradient Image Completed ****`,
-          ]);
-        } else {
-          setFFmpegMessage((pre) => [
-            ...pre,
-            "**** Generating Solid Color Image ****",
-          ]);
-
-          bgBlob = await createColorImageBlob(
-            totalW,
-            totalH,
-            editerState.backgroundColor
-          );
-          setFFmpegMessage((pre) => [
-            ...pre,
-            `**** Generating Solid Color Image Completed ****`,
-          ]);
-        }
-
-        // Write Background to FFmpeg
-        await ffmpeg.writeFile(bgImageName, await fetchFile(bgBlob));
-
-        setFFmpegMessage((pre) => [
-            ...pre,
-            `**** Bg Add in FFmpeg ****`,
-          ]);
-
-        const maskBlob = await createRoundedMaskBlob(
-            {width:videoW,height:videoH,radius:editerState.borderRadius}
-          );
-        await ffmpeg.writeFile(maskImageName, await fetchFile(maskBlob));
-
-        setFFmpegMessage((pre) => [
-            ...pre,
-            `**** Video mask Add in FFmpeg ****`,
-          ]);
-
-        inputs = ["-i", inputName, "-i", bgImageName, "-i", maskImageName];
-
-        // A. Apply Mask to Video
-        // [0:v][2:v]alphamerge -> takes video and mask, merges them into [masked_video]
-        filterChain += `[0:v][2:v]alphamerge[masked_video];`;
-
-        // B. Overlay Masked Video onto Background
-        // [1:v][masked_video]overlay...
-        filterChain += `[1:v][masked_video]overlay=x=${extraPW}:y=${extraPH}`;
-
-        // setsar=1 ensures the pixel aspect ratio is square (important for players)
-        filterChain += `,scale=${outputW}:${outputH}:flags=lanczos,setsar=1`;
-
-        // --- SPECIAL HANDLING FOR GIF ---
-        if (exportType === "gif") {
-          // GIFs need fps reduction to keep file size reasonable
-          filterChain += `,fps=10`;
-          // Note: splitting palettegen/paletteuse is better for quality,
-          // but for a single command, we stick to basic filtering.
-        }
-
-        // --- CONSTRUCT FINAL ARGUMENTS ---
-        ffmpegArgs = [
-          ...inputs,
-          "-filter_complex",
-          filterChain, // We use filter_complex for both cases now, it's safer
-        ];
-
-        // --- ENCODING FLAGS ---
-        if (exportType === "gif") {
-          ffmpegArgs.push("-f", "gif", "-loop", "0");
-        } else {
-          ffmpegArgs.push(
-            "-c:v",
-            "libx264",
-            "-preset",
-            "ultrafast",
-            "-pix_fmt",
-            "yuv420p"
-          );
-        }
-
-        // output file
-        ffmpegArgs.push(outputName);
-
-        // --- 7. Execute ---
-        setFFmpegMessage((pre) => [...pre, `**** Executing FFmpeg... ****`]);
-        console.log("Command:", ffmpegArgs);
-
-        await ffmpeg.exec(ffmpegArgs);
-
-        setFFmpegMessage((pre) => [
-          ...pre,
-          `****Reading output file data.****`,
-        ]);
-        // --- 8. Read & Download ---
-        const data = await ffmpeg.readFile(outputName);
-
-        // Create Download
-        const mimeType =
-          exportType === "gif" ? "image/gif" : `video/${exportType}`;
-        setFFmpegMessage((pre) => [
-          ...pre,
-          `****readying File for download.****`,
-        ]);
-
-        const blob = new Blob([data as any], { type: mimeType });
-        const url = URL.createObjectURL(blob);
-
-        setExportFileUrl(url);
-
-        // Auto Download
-        const a = document.createElement("a");
-        a.href = url;
-        a.download = `video-${Date.now()}.${exportType}`;
-        document.body.appendChild(a);
-        a.click();
-
-        // Cleanup DOM
-        setTimeout(() => {
-          document.body.removeChild(a);
-          // URL.revokeObjectURL(url);
-        }, 100);
-
-        // Cleanup FFmpeg FS
-        try {
-          await ffmpeg.deleteFile(inputName);
-          await ffmpeg.deleteFile(outputName);
-        } catch (e) {
-          console.warn("Cleanup warning:", e);
-        }
-
-        setProgress(100);
-      } catch (err) {
-        console.error("Export Critical Error:", err);
-        setError(err instanceof Error ? err.message : "Unknown error");
-      } finally {
-        setIsExporting(false);
+      if (totalDuration <= 0 || isNaN(totalDuration)) {
+        throw new Error("Invalid project duration.");
       }
-    },
-    [loadFFmpeg]
-  );
+
+      setFFmpegMessage([`🚀 Initializing ${isChunking ? "Chunked" : "Single-Pass"} Render...`]);
+
+      if (!ffmpegRef.current) await loadFFmpeg();
+      const ffmpeg = ffmpegRef.current!;
+
+      let outputW = 1920; let outputH = 1080;
+      if (resolution === "720p") { outputW = 1280; outputH = 720; }
+      else if (resolution === "480p") { outputW = 854; outputH = 480; }
+
+      const finalExt = exportType === "av1" ? "mp4" : exportType;
+      const finalOutputName = `render.${finalExt}`;
+      const padding = editerState.padding ?? 0;
+
+      // --------------------------------------------------------------------------------
+      // BRANCH A: CHUNKED RENDER (Memory Safe)
+      // --------------------------------------------------------------------------------
+      if (isChunking) {
+        const CHUNK_SIZE_LIMIT = 10 * 1024 * 1024; // 10MB target
+        const segments: { start: number; end: number }[] = [];
+        let currentTime = clipStart;
+
+        // Create Segments
+        while (currentTime < clipEnd) {
+          const activeVideos = editerState.videos.filter((v) => {
+            const vEnd = v.startTime + (v.clipedVideoEndTime - v.clipedVideoStartTime);
+            return currentTime >= v.startTime && currentTime < vEnd;
+          });
+          let step = 10;
+          if (activeVideos.length > 0) {
+            const maxBitrate = Math.max(...activeVideos.map(v => v.sizeByte / (v.clipedVideoEndTime - v.clipedVideoStartTime)));
+            step = CHUNK_SIZE_LIMIT / maxBitrate;
+          }
+          step = Math.max(1, Math.min(60, step));
+          let nextTime = Math.min(currentTime + step, clipEnd);
+          segments.push({ start: currentTime, end: nextTime });
+          currentTime = nextTime;
+        }
+
+        const chunkDataArrays: Uint8Array[] = [];
+
+        for (let i = 0; i < segments.length; i++) {
+          const chunk = segments[i];
+          const curDur = chunk.end - chunk.start;
+          setFFmpegMessage(pre => [...pre, `󱦟 Rendering Chunk ${i + 1}/${segments.length} (${curDur.toFixed(1)}s)...`]);
+
+          const bgImg = `bg.png`;
+          const bgBlob = await createBackgroundBlob(outputW, outputH, { type: editerState.bgType, color: editerState.backgroundColor, gradient: editerState.backgroundGradient, imageUrl: editerState.bgImageUrl });
+          await ffmpeg.writeFile(bgImg, await fetchFile(bgBlob));
+
+          const inputs: string[] = ["-loop", "1", "-i", bgImg];
+          const filters: string[] = [];
+          let lastL = "[0:v]";
+
+          for (let j = 0; j < editerState.videos.length; j++) {
+            const v = editerState.videos[j];
+            const vEnd = v.startTime + (v.clipedVideoEndTime - v.clipedVideoStartTime);
+            const rStart = Math.max(v.startTime, chunk.start);
+            const rEnd = Math.min(vEnd, chunk.end);
+            if (rStart >= rEnd) continue;
+
+            const sStart = v.clipedVideoStartTime + (rStart - v.startTime);
+            const sEnd = v.clipedVideoStartTime + (rEnd - v.startTime);
+            const relS = rStart - chunk.start;
+            const relE = rEnd - chunk.start;
+
+            const { w: vW, h: vH } = await getVideoDimensions(v.url);
+            const scale = (outputW / (outputW + 2 * padding)) * Math.min(outputW / vW, outputH / vH);
+            const sW = Math.floor((vW * scale) / 2) * 2;
+            const sH = Math.floor((vH * scale) / 2) * 2;
+
+            const mName = `m_${j}.png`;
+            const mBlob = await createRoundedMaskBlob({ width: sW, height: sH, radius: editerState.borderRadius * (outputW / (outputW + 2 * padding)) });
+            await ffmpeg.writeFile(mName, await fetchFile(mBlob));
+            await ffmpeg.writeFile(`v_${j}`, await fetchFile(v.url));
+
+            inputs.push("-ss", sStart.toFixed(3), "-to", sEnd.toFixed(3), "-i", `v_${j}`, "-i", mName);
+            const vIdx = inputs.filter(a => a === "-i").length - 2;
+            const mIdx = vIdx + 1;
+
+            filters.push(`[${vIdx}:v]fps=25,scale=${sW}:${sH},setpts=PTS-STARTPTS,format=rgba[vs${j}]`);
+            filters.push(`[vs${j}][${mIdx}:v]alphamerge[vm${j}]`);
+            filters.push(`${lastL}[vm${j}]overlay=${(outputW - sW) / 2}:${(outputH - sH) / 2}:enable='between(t,${relS.toFixed(3)},${relE.toFixed(3)})'[ov${j}]`);
+            lastL = `[ov${j}]`;
+          }
+
+          await ffmpeg.exec(["-fflags", "+genpts", ...inputs, "-filter_complex", filters.length > 0 ? filters.join(";") : "format=yuv420p", "-map", filters.length > 0 ? lastL : "0:v", "-t", curDur.toFixed(3), "-c:v", "libx264", "-preset", "ultrafast", "-crf", "22", "-pix_fmt", "yuv420p", "-r", "25", `c${i}.mp4`]);
+          const data = await ffmpeg.readFile(`c${i}.mp4`);
+          chunkDataArrays.push(data as Uint8Array);
+
+          const files = await ffmpeg.listDir("/");
+          for (const f of files) { if (!f.isDir) await ffmpeg.deleteFile(f.name); }
+          setProgress(Math.round(((i + 1) / segments.length) * 85));
+        }
+
+        // Join Chunks
+        const concatList: string[] = [];
+        for (let i = 0; i < chunkDataArrays.length; i++) {
+          await ffmpeg.writeFile(`p${i}.mp4`, chunkDataArrays[i]);
+          concatList.push(`file p${i}.mp4`);
+        }
+        await ffmpeg.writeFile("list.txt", concatList.join("\n"));
+        let finalArgs = ["-f", "concat", "-safe", "0", "-i", "list.txt"];
+        if (exportType === "mp4" || exportType === "av1") finalArgs.push("-c", "copy", finalOutputName);
+        else finalArgs.push("-c:v", exportType === "webm" ? "libvpx-vp9" : "libx264", finalOutputName);
+        
+        await ffmpeg.exec(finalArgs);
+
+      } 
+      // --------------------------------------------------------------------------------
+      // BRANCH B: SINGLE-PASS RENDER (Fast)
+      // --------------------------------------------------------------------------------
+      else {
+        setFFmpegMessage(pre => [...pre, `🎬 Rendering entire project in one pass...`]);
+        
+        const bgBlob = await createBackgroundBlob(outputW, outputH, { type: editerState.bgType, color: editerState.backgroundColor, gradient: editerState.backgroundGradient, imageUrl: editerState.bgImageUrl });
+        await ffmpeg.writeFile("bg.png", await fetchFile(bgBlob));
+
+        const inputs: string[] = ["-loop", "1", "-i", "bg.png"];
+        const filters: string[] = [];
+        let lastL = "[0:v]";
+
+        for (let j = 0; j < editerState.videos.length; j++) {
+          const v = editerState.videos[j];
+          const vDur = v.clipedVideoEndTime - v.clipedVideoStartTime;
+          const vEnd = v.startTime + vDur;
+
+          // Only include if video falls within clipStart/End
+          const rStart = Math.max(v.startTime, clipStart);
+          const rEnd = Math.min(vEnd, clipEnd);
+          if (rStart >= rEnd) continue;
+
+          const sStart = v.clipedVideoStartTime + (rStart - v.startTime);
+          const sEnd = v.clipedVideoStartTime + (rEnd - v.startTime);
+          const relStart = rStart - clipStart;
+          const relEnd = rEnd - clipStart;
+
+          const { w: vW, h: vH } = await getVideoDimensions(v.url);
+          const scale = (outputW / (outputW + 2 * padding)) * Math.min(outputW / vW, outputH / vH);
+          const sW = Math.floor((vW * scale) / 2) * 2;
+          const sH = Math.floor((vH * scale) / 2) * 2;
+
+          const mName = `m_${j}.png`;
+          const mBlob = await createRoundedMaskBlob({ width: sW, height: sH, radius: editerState.borderRadius * (outputW / (outputW + 2 * padding)) });
+          await ffmpeg.writeFile(mName, await fetchFile(mBlob));
+          await ffmpeg.writeFile(`v_${j}`, await fetchFile(v.url));
+
+          inputs.push("-ss", sStart.toFixed(3), "-to", sEnd.toFixed(3), "-i", `v_${j}`, "-i", mName);
+          const vIdx = inputs.filter(a => a === "-i").length - 2;
+          
+          filters.push(`[${vIdx}:v]fps=25,scale=${sW}:${sH},setpts=PTS-STARTPTS,format=rgba[vs${j}]`);
+          filters.push(`[vs${j}][${vIdx+1}:v]alphamerge[vm${j}]`);
+          filters.push(`${lastL}[vm${j}]overlay=${(outputW-sW)/2}:${(outputH-sH)/2}:enable='between(t,${relStart.toFixed(3)},${relEnd.toFixed(3)})'[ov${j}]`);
+          lastL = `[ov${j}]`;
+        }
+
+        const args = ["-fflags", "+genpts", ...inputs, "-filter_complex", filters.join(";"), "-map", lastL, "-t", totalDuration.toFixed(3)];
+        
+        if (exportType === "mp4") args.push("-c:v", "libx264", "-preset", "ultrafast", "-crf", "22", "-pix_fmt", "yuv420p", finalOutputName);
+        else if (exportType === "gif") args.push("-f", "gif", finalOutputName);
+        else if (exportType === "av1") args.push("-c:v", "libaom-av1", "-crf", "30", "-cpu-used", "8", finalOutputName);
+        else args.push("-c:v", "libvpx-vp9", "-crf", "30", finalOutputName);
+
+        await ffmpeg.exec(args);
+      }
+
+      // --------------------------------------------------------------------------------
+      // FINAL PHASE: DOWNLOAD
+      // --------------------------------------------------------------------------------
+      const finalData = await ffmpeg.readFile(finalOutputName);
+      const url = URL.createObjectURL(new Blob([finalData as any], { type: `video/${finalExt}` }));
+      const a = document.createElement("a");
+      a.href = url;
+      a.download = `render-${Date.now()}.${finalExt}`;
+      a.click();
+      
+      setProgress(100);
+      setFFmpegMessage(pre => [...pre, "✅ Done!"]);
+    } catch (err) {
+      console.error(err);
+      setFFmpegMessage(p => [...p, `❌ Error: ${err instanceof Error ? err.message : "Unknown"}`]);
+    } finally {
+      setIsExporting(false);
+      setIsProcessing(false);
+    }
+  }, [loadFFmpeg]);
+
+  const compressFileForEditor = useCallback(async (file: File) => {
+    if (!ffmpegRef.current) await loadFFmpeg();
+    const ffmpeg = ffmpegRef.current!;
+
+    const inputName = "raw_input";
+    const outputName = "optimized.mp4";
+
+    await ffmpeg.writeFile(inputName, await fetchFile(file));
+
+    // Optimization Command:
+    // 1. Scale to 720p (scale=1280:-2) to save 50% RAM
+    // 2. Lower bitrate (maxrate 2M)
+    // 3. Fast encoding (ultrafast)
+    // 4. Force 25fps to prevent sync issues later
+    await ffmpeg.exec([
+      "-i",
+      inputName,
+      "-vf",
+      "scale=1280:-2,fps=25",
+      "-c:v",
+      "libx264",
+      "-preset",
+      "ultrafast",
+      "-crf",
+      "28",
+      "-maxrate",
+      "2M",
+      "-bufsize",
+      "4M",
+      "-pix_fmt",
+      "yuv420p",
+      "-c:a",
+      "aac",
+      "-b:a",
+      "128k",
+      outputName,
+    ]);
+
+    const data = await ffmpeg.readFile(outputName);
+    const optimizedBlob = new Blob([data as any], { type: "video/mp4" });
+
+    // Cleanup FFmpeg memory immediately
+    await ffmpeg.deleteFile(inputName);
+    await ffmpeg.deleteFile(outputName);
+
+    return optimizedBlob;
+  }, []);
 
   return {
     initFFmpeg: loadFFmpeg,
     exportWithFFmpeg,
+    compressFileForEditor,
     isReady,
     progress,
     error,
     ffmpegMessage,
     exportFileUrl,
+    isProcessing,
   };
 }
 
@@ -332,72 +343,75 @@ const getVideoDimensions = (url: string): Promise<{ w: number; h: number }> => {
   });
 };
 
-// Helper 2: Create a Gradient Image Blob using HTML Canvas
-const createGradientBlob = async (
+interface BackgroundConfig {
+  type: "COLOR" | "GRADIENT" | "IMAGE";
+  color?: string;
+  gradient?: {
+    stops: { color: string; position: number }[];
+    angle: number;
+  };
+  imageUrl?: string;
+}
+
+const createBackgroundBlob = async (
   width: number,
   height: number,
-  stops: { color: string; position: number }[],
-  angle: number
+  config: BackgroundConfig
 ): Promise<Blob> => {
   const canvas = document.createElement("canvas");
   canvas.width = width;
   canvas.height = height;
-
-  const centerX = canvas.width / 2;
-  const centerY = canvas.height / 2;
-  const length = Math.max(canvas.width, canvas.height);
   const ctx = canvas.getContext("2d");
   if (!ctx) throw new Error("Canvas context failed");
 
-  // Convert CSS angle to Canvas Gradient coordinates (Simple approximation)
-  // For precise CSS matching, complex trigonometry is needed,
-  // but this covers standard diagonal/vertical/horizontal well.
-  const angleRad = ((angle - 90) * Math.PI) / 180;
+  const { type, color, gradient, imageUrl } = config;
 
-  const x2 = centerX + (Math.cos(angleRad) * length) / 2;
-  const y2 = centerY + (Math.sin(angleRad) * length) / 2;
-  const x1 = centerX - (Math.cos(angleRad) * length) / 2;
-  const y1 = centerY - (Math.sin(angleRad) * length) / 2;
+  if (type === "COLOR") {
+    // --- 1. SOLID COLOR LOGIC ---
+    ctx.fillStyle = color || "#000000";
+    ctx.fillRect(0, 0, width, height);
+  } else if (type === "GRADIENT" && gradient) {
+    // --- 2. GRADIENT LOGIC ---
+    const centerX = width / 2;
+    const centerY = height / 2;
+    const length = Math.max(width, height);
+    const angleRad = ((gradient.angle - 90) * Math.PI) / 180;
 
-  const gradient = ctx.createLinearGradient(x1, y1, x2, y2);
+    const x2 = centerX + (Math.cos(angleRad) * length) / 2;
+    const y2 = centerY + (Math.sin(angleRad) * length) / 2;
+    const x1 = centerX - (Math.cos(angleRad) * length) / 2;
+    const y1 = centerY - (Math.sin(angleRad) * length) / 2;
 
-  // Add color stops (sorted by position)
-  stops
-    .sort((a, b) => a.position - b.position)
-    .forEach((stop) => {
-      gradient.addColorStop(stop.position / 100, stop.color);
+    const canvasGradient = ctx.createLinearGradient(x1, y1, x2, y2);
+    [...gradient.stops]
+      .sort((a, b) => a.position - b.position)
+      .forEach((stop) => {
+        canvasGradient.addColorStop(stop.position / 100, stop.color);
+      });
+
+    ctx.fillStyle = canvasGradient;
+    ctx.fillRect(0, 0, width, height);
+  } else if (type === "IMAGE" && imageUrl) {
+    // --- 3. IMAGE LOGIC ---
+    const img = new Image();
+    // Enable cross-origin for external URLs (needed for canvas.toBlob)
+    img.crossOrigin = "anonymous";
+    img.src = imageUrl;
+
+    await new Promise((resolve, reject) => {
+      img.onload = resolve;
+      img.onerror = () => reject(new Error("Failed to load background image"));
     });
 
-  ctx.fillStyle = gradient;
-  ctx.fillRect(0, 0, width, height);
+    // Draw image to fill the canvas dimensions
+    ctx.drawImage(img, 0, 0, width, height);
+  }
 
+  // Final Step: Convert Canvas to Blob
   return new Promise((resolve, reject) => {
     canvas.toBlob((blob) => {
       if (blob) resolve(blob);
-      else reject(new Error("Canvas blob failed"));
-    }, "image/png");
-  });
-};
-
-//
-const createColorImageBlob = async (
-  width: number,
-  height: number,
-  color: string
-): Promise<Blob> => {
-  const canvas = document.createElement("canvas");
-  canvas.width = width;
-  canvas.height = height;
-  const ctx = canvas.getContext("2d");
-  if (!ctx) throw new Error("Canvas context failed");
-
-  ctx.fillStyle = color || "#000000";
-  ctx.fillRect(0, 0, width, height);
-
-  return new Promise((resolve, reject) => {
-    canvas.toBlob((blob) => {
-      if (blob) resolve(blob);
-      else reject(new Error("Canvas blob failed"));
+      else reject(new Error("Canvas blob conversion failed"));
     }, "image/png");
   });
 };

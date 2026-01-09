@@ -13,7 +13,6 @@ import {
   toggleIsRecording,
 } from "@/lib/utils";
 import MicButton from "@/components/popup/MicButton";
-import CameraSettingsButton from "@/components/popup/CameraSettingButton";
 
 
 interface AudioDevice {
@@ -65,11 +64,9 @@ function App() {
       <header className="flex justify-between items-center mb-3">
         <div className="flex items-center gap-2">
           <Command />
-          <h1 className="font-semibold text-lg">RecorderZero</h1>
+          <h1 className="font-semibold text-lg">Recorder
+            <span className=" text-primary">Zero</span></h1>
         </div>
-        <Button size="icon-sm" variant="ghost" className="rounded-full">
-          <IoIosSettings />
-        </Button>
       </header>
       <a
         href={videoPath}
@@ -112,11 +109,11 @@ function App() {
       {/* Main Button */}
       <div className="flex justify-center">
         <Button
-          className=" rounded-full px-8 w-full"
+          className="px-8 w-full"
           onClick={() => toggleRecording()}
         >
           {recordingState[0] ? (
-            <div className="animate-pulse bg-red-500 w-2 h-2 rounded-full" />
+            <div className="animate-pulse bg-red-500 w-2 h-2" />
           ) : (
             <FaPlay />
           )}

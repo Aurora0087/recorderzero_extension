@@ -33,17 +33,22 @@ export async function checkRocordingStates(): Promise<RecordingState> {
 }
 
 export async function checkUserMicState() {
-   const isMicOn =
-    (await storage.getItem<boolean>("local:isMicOn")) || false;
+  const isMicOn = (await storage.getItem<boolean>("local:isMicOn")) || false;
   const selectedMicAudioId =
     (await storage.getItem<string>("local:selectedMicAudioId")) || "";
 
-  return {"isMicOn":isMicOn,"selectedMicAudioId":selectedMicAudioId};
+  return { isMicOn: isMicOn, selectedMicAudioId: selectedMicAudioId };
 }
 
-export async function setUserMicState({isMicOn,selectedMicAudioId}:{isMicOn:boolean,selectedMicAudioId:string}) {
-  await storage.setItem("local:isMicOn",isMicOn);
-  await storage.setItem("local:selectedMicAudioId",selectedMicAudioId);
+export async function setUserMicState({
+  isMicOn,
+  selectedMicAudioId,
+}: {
+  isMicOn: boolean;
+  selectedMicAudioId: string;
+}) {
+  await storage.setItem("local:isMicOn", isMicOn);
+  await storage.setItem("local:selectedMicAudioId", selectedMicAudioId);
 }
 
 export async function changeRecordType(type: RecordingType) {
@@ -92,33 +97,33 @@ export async function getUserMediaPermissions() {
   return true;
 }
 
-export async function setCamPositionOnPage(
-  x: number,
-  y: number
-) {
+export async function setCamPositionOnPage(x: number, y: number) {
   await storage.setItem("local:camXpsition", x);
   await storage.setItem("local:camYpsition", y);
 }
 
 export async function getCamPositionOnPage() {
-  const x = await storage.getItem<number>("local:camXpsition")||16;
-  const y = await storage.getItem<number>("local:camYpsition")||16;
-  return {x,y}
+  const x = (await storage.getItem<number>("local:camXpsition")) || 16;
+  const y = (await storage.getItem<number>("local:camYpsition")) || 16;
+  return { x, y };
 }
 
-export async function setIsFullRoundedCamLocaly({IsRound}:{IsRound:boolean}) {
-  await storage.setItem<boolean>("local:isFullRoundedTabCam",IsRound);
+export async function setIsFullRoundedCamLocaly({
+  IsRound,
+}: {
+  IsRound: boolean;
+}) {
+  await storage.setItem<boolean>("local:isFullRoundedTabCam", IsRound);
 }
 
 export async function getIsFullRoundedCam() {
-  const isFullRoundedCam = await storage.getItem<boolean>("local:isFullRoundedTabCam");
-  return isFullRoundedCam??false;
+  const isFullRoundedCam = await storage.getItem<boolean>(
+    "local:isFullRoundedTabCam"
+  );
+  return isFullRoundedCam ?? false;
 }
 
-
 ///////////////////////////////////////////////////////////////////////////////////////////////////////////
-
-
 
 export function makeId(length: number = 16) {
   var result = "";
@@ -164,9 +169,42 @@ export const deformatTime = (timeString: string): number | null => {
   }
 };
 
-
-const clipColors = ["#8CE4FF","#FEEE91","#FFA239","#FF5656","#4DFFBE","#FF76CE","#FF8F8F"]
+const clipColors = [
+    "#FFFFFF",
+    "#DC143C",
+    "#00FF9C",
+    "#F8FAB4",
+    "#F875AA",
+    "#4ED7F1",
+    "#EDFFF0",
+    "#FFBBE1",
+    "#D2FF72",
+    "#6256CA",
+    "#FF6600",
+    "#6DE1D2",
+    "#FF5555",
+    "#32FF6A",
+    "#F0E4D3",
+  ];
 
 export function getRandomColor() {
-  return clipColors[Math.min(clipColors.length-1,Math.floor(Math.random() * 10))];
+  return clipColors[
+    Math.min(clipColors.length - 1, Math.floor(Math.random() * 10))
+  ];
+}
+
+export function getVideoDuration(url: string): Promise<number> {
+  return new Promise((resolve, reject) => {
+    const video = document.createElement("video");
+    video.preload = "metadata";
+    video.src = url;
+
+    video.onloadedmetadata = () => {
+      resolve(video.duration);
+    };
+
+    video.onerror = () => {
+      reject("Error loading video file");
+    };
+  });
 }

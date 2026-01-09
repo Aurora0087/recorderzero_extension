@@ -15,14 +15,11 @@ import {
 } from "@/components/ui/dialog";
 import { Progress } from "../ui/progress";
 import { Check, Download, TerminalSquare, X } from "lucide-react";
-import { FcOpenedFolder, FcFolder } from "react-icons/fc";
 import { ScrollArea } from "../ui/scroll-area";
 import { Separator } from "../ui/separator";
 import { Button } from "../ui/button";
-import { ImFilm } from "react-icons/im";
-import { GiSoundWaves } from "react-icons/gi";
-import { CgArrowTopRight } from "react-icons/cg";
-import { IoImageOutline } from "react-icons/io5";
+import { FaAnglesLeft, FaAnglesRight } from "react-icons/fa6";
+import LeftsidefileExplor from "./Left-side-file-Explor";
 
 export default function EditerPage({
   blob = null,
@@ -52,33 +49,46 @@ export default function EditerPage({
     updateClip,
     updateBackground,
     updateGradient,
+    updateBgType,
     updatePadding,
     updateBorderRadius,
     updateTransition,
     updateTransitionDuration,
     addVideo,
     updateVideos,
+    deleteVideo,
     addimportedFiles,
-    isProcessing,
+    updateBackImageUrl,
   } = useVideoEditor();
 
   const {
     error,
     exportWithFFmpeg,
-    initFFmpeg,
     progress,
     isReady,
     ffmpegMessage,
     exportFileUrl,
+    isProcessing,
   } = useFFmpegExport();
 
-  function pushSingleVideoClip(vid: string) {
-    const video = videoRefs.current.get(vid);
-    if (!video) {
-      return;
+  const noVideoArea = ({ nextTime }: { nextTime: number }) => {
+    console.log(nextTime);
+
+    const nextVideoDetails = state.videos.find(
+      (v) =>
+        v.startTime + v.clipedVideoStartTime <= nextTime &&
+        v.startTime + v.clipedVideoEndTime >= nextTime
+    );
+    if (nextVideoDetails) {
+      onSeek({ time: nextVideoDetails.startTime });
+    } else {
+      setCurrentPlayingVideoId("");
+      setCurrentTime(nextTime + 0.1);
+      setTimeout(() => {
+        noVideoArea({ nextTime: nextTime + 0.1 });
+      }, 100);
     }
-    video.pause();
-  }
+  };
 
   const togglePlay = () => {
     if (isPlaying) {
@@ -101,87 +111,136 @@ export default function EditerPage({
   };
 
   function handleTimeUpdate({ vid }: { vid: string }) {
-    if (vid !== currentPlayingVideoId) {
-      return;
-    }
+    // 1. Safety Checks
+    if (vid !== currentPlayingVideoId) return;
+
     const videoEle = videoRefs.current.get(currentPlayingVideoId);
     const videoDetails = state.videos.find(
       (a) => a.id === currentPlayingVideoId
     );
 
-    if (videoEle && videoDetails) {
-      const videosCurrentTime = videoEle.currentTime;
+    if (!videoEle || !videoDetails) return;
 
-      if (videosCurrentTime >= videoDetails.clipedVideoEndTime) {
-        videoEle.pause();
-        if (
-          state.clipEnd ===
-          videoDetails.startTime + videoDetails.clipedVideoEndTime
-        ) {
-          setIsPlaying(false);
-        } else {
-          videoEle.style.opacity = "0%";
-          const nextVideoDetails = state.videos.find(
-            (v) => v.startTime === videoDetails.clipedVideoEndTime
-          );
-          if (nextVideoDetails) {
-            setCurrentPlayingVideoId(nextVideoDetails.id);
-            const nextVideoEle = videoRefs.current.get(nextVideoDetails.id);
-            if (nextVideoEle) {
-              nextVideoEle.style.opacity = "100%";
-              nextVideoEle.currentTime = nextVideoDetails.clipedVideoStartTime;
-              if (isPlaying) {
-                nextVideoEle.play();
-              } else {
-                nextVideoEle.pause();
-              }
+    const videosCurrentTime = videoEle.currentTime;
+
+    // 2. Check if the video clip has reached its trim point
+    // We use a small buffer (0.05) to ensure we don't overshoot frames visually
+    if (videosCurrentTime >= videoDetails.clipedVideoEndTime - 0.05) {
+      // -- STOP CURRENT VIDEO --
+      videoEle.pause();
+      videoEle.style.opacity = "0"; // Hide it immediately
+
+      // Calculate where exactly this clip ends on the timeline
+      const clipDuration =
+        videoDetails.clipedVideoEndTime - videoDetails.clipedVideoStartTime;
+      const currentClipEndTimeOnTimeline =
+        videoDetails.startTime + clipDuration;
+
+      // -- CHECK 1: Is this the end of the entire project? --
+      // Check against state.clipEnd (Total Duration)
+      if (currentClipEndTimeOnTimeline >= state.clipEnd - 0.1) {
+        setIsPlaying(false);
+        setCurrentPlayingVideoId("");
+        setCurrentTime(currentClipEndTimeOnTimeline);
+        return;
+      }
+
+      // -- CHECK 2: Is there another video immediately after? --
+      const nextVideoDetails = state.videos.find(
+        (v) => Math.abs(v.startTime - currentClipEndTimeOnTimeline) < 0.1
+      );
+
+      if (nextVideoDetails) {
+        // -> SWITCH TO NEXT VIDEO
+        setCurrentPlayingVideoId(nextVideoDetails.id);
+
+        // Pre-setup the next video element
+        const nextVideoEle = videoRefs.current.get(nextVideoDetails.id);
+        if (nextVideoEle) {
+          nextVideoEle.style.opacity = "100%";
+          nextVideoEle.currentTime = nextVideoDetails.clipedVideoStartTime;
+
+          if (isPlaying) {
+            // Using a promise to prevent "play() request was interrupted" errors
+            const playPromise = nextVideoEle.play();
+            if (playPromise !== undefined) {
+              playPromise.catch((error) =>
+                console.error("Auto-play blocked:", error)
+              );
             }
-          } else {
-            setCurrentPlayingVideoId("");
           }
         }
-        setCurrentTime(
-          videoDetails.startTime + videoDetails.clipedVideoEndTime
-        );
       } else {
-        setCurrentTime(
-          videoDetails.startTime +
-            videosCurrentTime +
-            videoDetails.clipedVideoStartTime
-        );
+        // -> GAP DETECTED
+        setCurrentPlayingVideoId("");
+        setCurrentTime(currentClipEndTimeOnTimeline);
       }
-      console.log("Current time : ", videosCurrentTime);
+    } else {
+      // -- NORMAL PLAYBACK --
+      // Map Video Time -> Timeline Time
+      // Formula: ClipStartOnTimeline + (CurrentVideoTime - TrimStartOffset)
+      const correctTimelineTime =
+        videoDetails.startTime +
+        (videosCurrentTime - videoDetails.clipedVideoStartTime);
+      setCurrentTime(correctTimelineTime);
     }
   }
-
   function onSeek({ time }: { time: number }) {
-    const seekingVideoClip = state.videos.find(
-      (v) =>
-        v.startTime + v.clipedVideoStartTime <= time &&
-        v.startTime + v.clipedVideoEndTime >= time
-    );
+    // 1. FIX: Correctly calculate if 'time' falls within a clip's timeline range
+    const seekingVideoClip = state.videos.find((v) => {
+      const clipDuration = v.clipedVideoEndTime - v.clipedVideoStartTime;
+      const clipEndOnTimeline = v.startTime + clipDuration;
+
+      return time >= v.startTime && time <= clipEndOnTimeline;
+    });
+
     if (seekingVideoClip) {
       setCurrentPlayingVideoId(seekingVideoClip.id);
+
+      // Hide/Pause all other videos to prevent "ghost" frames
+      videoRefs.current.forEach((ele, key) => {
+        if (key !== seekingVideoClip.id) {
+          ele.style.opacity = "0";
+          ele.pause();
+        }
+      });
 
       const seekingVideoClipEle = videoRefs.current.get(seekingVideoClip.id);
       if (seekingVideoClipEle) {
         seekingVideoClipEle.style.opacity = "100%";
+
+        // 2. Math: Internal Time = TrimStart + (TimelineTime - TimelineStart)
         seekingVideoClipEle.currentTime =
-          time -
-          (seekingVideoClip.startTime + seekingVideoClip.clipedVideoStartTime);
+          seekingVideoClip.clipedVideoStartTime +
+          (time - seekingVideoClip.startTime);
+
         if (isPlaying) {
-          seekingVideoClipEle.play();
-        }else{
+          seekingVideoClipEle
+            .play()
+            .catch((e) => console.error("Seek play interrupted", e));
+        } else {
           seekingVideoClipEle.pause();
         }
       }
     } else {
-      setCurrentTime(time);
+      // We are in a gap (No video)
       setCurrentPlayingVideoId("");
-      videoRefs.current.forEach((v)=>{v.style.opacity="0%";
+
+      videoRefs.current.forEach((v) => {
+        v.style.opacity = "0%";
         v.pause();
-      })
+      });
+
+      // 3. FIX: If playing, trigger the gap loop so the playhead keeps moving
+      if (isPlaying) {
+        // Clear previous timeouts if you have a ref for it
+        // clearTimeout(noVideoTimeoutRef.current);
+        noVideoArea({ nextTime: time + 0.1 });
+      }
     }
+
+    // Always update the global time state
+    setCurrentTime(time);
   }
 
   const handleExportClick = () => {
@@ -239,6 +298,7 @@ export default function EditerPage({
 
       const video = document.createElement("video");
       let videoDuration = 0;
+      let videoSize = file.size;
       video.src = URL.createObjectURL(file);
       video.onloadedmetadata = () => {
         videoDuration = video.duration;
@@ -251,12 +311,14 @@ export default function EditerPage({
           maxTime: videoDuration,
           id: videoId + "_main",
           localyStoreVId: videoId,
+          sizeByte:videoSize,
         });
         addimportedFiles({
           id: videoId + "_main",
           name: "recording0.mp4",
           type: "video/mp4",
           url,
+          sizeByte:videoSize,
         });
         URL.revokeObjectURL(video.src);
       };
@@ -274,8 +336,11 @@ export default function EditerPage({
     );
   }
 
+  console.log(state.bgType);
+  
+
   return (
-    <main className="h-screen flex flex-col select-none overflow-hidden bg-background text-foreground">
+    <main className="h-screen flex flex-col select-none overflow-hidden bg-background text-foreground font-mono">
       {/* Main Content Workspace */}
       <div className="flex-1 flex overflow-hidden w-full max-w-[100vw]">
         {/* Left Sidebar - Fixed Width (handled inside component or add w-16 here) <LeftSidebar />*/}
@@ -283,109 +348,34 @@ export default function EditerPage({
         <div className="flex-1 flex flex-col gap-1 min-w-0 relative p-1 h-svh">
           {/*1. files */}
           <div className="flex ">
-            <div
-              className={`${
-                isFileExplorerOpen
-                  ? "w-85 mr-1 opacity-100 border p-2"
-                  : "w-0 mr-0 opacity-0 border-0 p-0"
-              } bg-card rounded-md transition-all relative overflow-hidden flex flex-col gap-2`}
-            >
-              <div>Media Files</div>
-              <Separator />
-              <div className="grid grid-cols-2 gap-2">
-                {state.importedFiles.map((imf) => {
-                  if (imf.type.includes("video/")) {
-                    return (
-                      <div key={imf.id} draggable title={imf.name}>
-                        <div className="bg-background overflow-hidden rounded-md aspect-video relative cursor-grab grid place-content-center border border-transparent hover:border-red-400">
-                          <video src={imf.url} controls={false}></video>
-                          <a
-                            href={imf.url}
-                            target="_blank"
-                            className="hover:text-primary absolute right-0 top-0 bg-background rounded"
-                            title="Open File in New tab"
-                          >
-                            <CgArrowTopRight className=" w-4 h-4" />
-                          </a>
-                          <ImFilm className=" absolute bottom-1 left-1 w-4 h-4 text-red-400" />
-                        </div>
-                        <p className=" line-clamp-1">{imf.name}</p>
-                      </div>
-                    );
-                  } else if (imf.type.includes("audio/")) {
-                    return (
-                      <div
-                        key={imf.id}
-                        className=" bg-background overflow-hidden rounded-md aspect-video relative cursor-grab grid place-content-center border border-transparent hover:border-green-400"
-                        title={imf.name}
-                        draggable
-                      >
-                        <a
-                          href={imf.url}
-                          target="_blank"
-                          className="hover:text-primary absolute right-0 top-0 bg-background rounded"
-                          title="Open File in New tab"
-                        >
-                          <CgArrowTopRight className=" w-4 h-4" />
-                        </a>
-                        <GiSoundWaves className=" w-8 h-8 text-green-400" />
-                      </div>
-                    );
-                  } else if (imf.type.includes("images/")) {
-                    return (
-                      <div
-                        key={imf.id}
-                        className=" bg-background overflow-hidden rounded-md aspect-video relative cursor-grab grid place-content-center border border-transparent hover:border-green-400"
-                        title={imf.name}
-                        draggable
-                      >
-                        <img
-                          src={imf.url}
-                          className=" w-full h-full object-contain"
-                        ></img>
-                        <a
-                          href={imf.url}
-                          target="_blank"
-                          className="hover:text-primary absolute right-0 top-0 bg-background rounded"
-                          title="Open File in New tab"
-                        >
-                          <CgArrowTopRight className=" w-4 h-4" />
-                        </a>
-                        <IoImageOutline className=" absolute bottom-1 left-1 w-4 h-4 text-green-400" />
-                      </div>
-                    );
-                  }
-                })}
-              </div>
-            </div>
+            <LeftsidefileExplor
+            addimportedFiles={addimportedFiles}
+             isFileExplorerOpen={isFileExplorerOpen}
+             updateVideos={updateVideos}
+             addVideo={addVideo}
+              state={state}  
+              />
             <Button
               variant="secondary"
+              title="Toggle file explorer view"
               onClick={() => setIsFileExplorerOpen((pre) => !pre)}
               size="icon-sm"
               className={`absolute ${
-                isFileExplorerOpen ? "left-88" : "left-2"
-              } z-50 top-2 border transition-all rounded`}
+                isFileExplorerOpen ? "left-89 rotate-0" : "left-3 rotate-180"
+              } z-50 top-3 border transition-all`}
             >
-              {isFileExplorerOpen ? <FcFolder /> : <FcOpenedFolder />}
+             <FaAnglesLeft />
             </Button>
             <MainPreview
               togglePlay={togglePlay}
               videoRefs={videoRefs}
               isPlaying={isPlaying}
               setIsPlaying={setIsPlaying}
+              bgType={state.bgType}
+              bgImageUrl={state.bgImageUrl}
               videos={state.videos}
               onLoadedMetadata={handleLoadedMetadata}
               onTimeUpdateHandel={handleTimeUpdate}
-              onImportClick={() => {
-                const input = document.createElement("input");
-                input.type = "file";
-                input.accept = "video/*";
-                input.onchange = (e: any) => {
-                  const file = e.target.files?.[0];
-                  if (file) handleVideoUpload(file);
-                };
-                input.click();
-              }}
               currentTime={currentTime}
               clipStart={state.clipStart}
               clipEnd={state.clipEnd}
@@ -407,8 +397,10 @@ export default function EditerPage({
           {/* 2. Timeline Area - Fixed Height & No Shrink */}
           <div className=" h-full z-10 relative">
             <BottomTimeline
-            setSelectedVideoClipId={setSelectedVideoClipId}
+              addVideo={addVideo}
+              setSelectedVideoClipId={setSelectedVideoClipId}
               isPlaying={isPlaying}
+              clipUpdate={updateVideos}
               togglePlay={togglePlay}
               videos={state.videos}
               videoElementRef={videoElementRef}
@@ -417,18 +409,20 @@ export default function EditerPage({
               clipEnd={state.clipEnd}
               onUpdateClip={updateClip}
               onSeek={onSeek}
+              deleteVideo={deleteVideo}
             />
           </div>
         </div>
 
         {/* Right Media Panel - Fixed Width */}
         <RightMediaPanel
+        progress={progress}
+        exportFileUrl={exportFileUrl}
+        updateBgType={updateBgType}
           selectedVideoId={selectedVideoClipId}
           clipUpdate={updateVideos}
           isProcessing={isProcessing}
           onExport={handleExportClick}
-          mediaFiles={[]}
-          onMediaSelect={(file) => handleVideoUpload(file)}
           onUpdateBackground={updateBackground}
           onUpdateGradient={updateGradient}
           onUpdatePadding={updatePadding}
@@ -436,6 +430,7 @@ export default function EditerPage({
           onUpdateTransition={updateTransition}
           onUpdateTransitionDuration={updateTransitionDuration}
           state={state}
+          updateBgImageUrl={updateBackImageUrl}
         />
       </div>
 
@@ -469,8 +464,8 @@ export default function EditerPage({
               <div>
                 <p>Progress</p>
                 <div className="flex gap-2 items-center justify-between">
-                  <Progress value={progress} className=" h-1" />
-                  <span>{progress}%</span>
+                  <Progress value={progress} className=" h-1 rounded-none" />
+                  <span>{Math.max(0,Math.min(100,progress))}%</span>
                 </div>
               </div>
               {/* states in presses */}
@@ -509,6 +504,7 @@ export default function EditerPage({
               {exportFileUrl && (
                 <a
                   href={exportFileUrl}
+                  target="_blank"
                   className=" rounded-md bg-primary px-4 py-2 flex items-center justify-center gap-2 hover:bg-primary/50 text-primary-foreground"
                 >
                   <Download className=" w-4 h-4" />
